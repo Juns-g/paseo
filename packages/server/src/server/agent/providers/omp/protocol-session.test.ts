@@ -1,5 +1,5 @@
 import pino from "pino";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { JsonlRpcExit } from "../jsonl-rpc-process.js";
 import { establishOmpProtocol, type OmpProtocolTransport } from "./protocol-session.js";
 
@@ -44,6 +44,10 @@ const V2_READY = {
   maxReassembledFrameBytes: 64 * 1024 * 1024,
 };
 
+afterEach(() => {
+  vi.useRealTimers();
+});
+
 describe("establishOmpProtocol", () => {
   it("owns readiness and v2 negotiation", async () => {
     const harness = transportHarness();
@@ -57,6 +61,38 @@ describe("establishOmpProtocol", () => {
       },
     ]);
     expect(harness.exitSubscribed()).toBe(false);
+  });
+
+  it("uses the configured RPC timeout while waiting for a cold OMP", async () => {
+    vi.useFakeTimers();
+    const harness = transportHarness();
+    const negotiation = establishOmpProtocol(harness.transport, pino({ level: "silent" }), {
+      readyTimeoutMs: 60_000,
+      requestTimeoutMs: 60_000,
+    });
+    const outcome = negotiation.then(
+      () => "resolved",
+      () => "rejected",
+    );
+
+    await vi.advanceTimersByTimeAsync(12_000);
+    harness.emitReady(V2_READY);
+
+    await expect(outcome).resolves.toBe("resolved");
+  });
+
+  it("falls back to 10 seconds while waiting for OMP to become ready", async () => {
+    vi.useFakeTimers();
+    const harness = transportHarness();
+    const negotiation = establishOmpProtocol(harness.transport, pino({ level: "silent" }));
+    const outcome = negotiation.then(
+      () => "resolved",
+      () => "rejected",
+    );
+
+    await vi.advanceTimersByTimeAsync(10_000);
+
+    expect(await Promise.race([outcome, Promise.resolve("pending")])).toBe("rejected");
   });
 
   it("keeps protocol v1 when the ready frame has no matching capability", async () => {
