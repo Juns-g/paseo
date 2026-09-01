@@ -7,9 +7,9 @@ import type { OmpUsagePollScheduler } from "./usage-poller.js";
 import { resolveOmpProviderParams } from "./provider-config.js";
 import { OmpHarness } from "./test-utils/omp-harness.js";
 
-test("OMP ready timeout defaults to 10 seconds and RPC timeout overrides both", () => {
+test("OMP ready timeout defaults to 20 seconds and RPC timeout overrides both", () => {
   expect(resolveOmpProviderParams({}).runtimeProviderParams).toMatchObject({
-    readyTimeoutMs: 10_000,
+    readyTimeoutMs: 20_000,
     rpcTimeoutMs: 60_000,
   });
   expect(resolveOmpProviderParams({ rpcTimeoutMs: 90_000 }).runtimeProviderParams).toMatchObject({

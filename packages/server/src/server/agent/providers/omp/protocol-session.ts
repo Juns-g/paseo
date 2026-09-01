@@ -5,7 +5,7 @@ import {
   type JsonlRpcExit,
 } from "../jsonl-rpc-process.js";
 
-const OMP_READY_TIMEOUT_MS = 10_000;
+const OMP_READY_TIMEOUT_MS = 20_000;
 
 export interface OmpProtocolTransport {
   onMessage(callback: (message: Record<string, unknown>) => void): () => void;

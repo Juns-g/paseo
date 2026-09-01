@@ -81,18 +81,23 @@ describe("establishOmpProtocol", () => {
     await expect(outcome).resolves.toBe("resolved");
   });
 
-  it("falls back to 10 seconds while waiting for OMP to become ready", async () => {
+  it("waits 20 seconds for OMP to become ready", async () => {
     vi.useFakeTimers();
     const harness = transportHarness();
     const negotiation = establishOmpProtocol(harness.transport, pino({ level: "silent" }));
     const outcome = negotiation.then(
       () => "resolved",
-      () => "rejected",
+      (error: unknown) =>
+        error instanceof Error ? error.message : "rejected with a non-Error value",
     );
 
-    await vi.advanceTimersByTimeAsync(10_000);
+    await vi.advanceTimersByTimeAsync(19_999);
+    expect(harness.exitSubscribed()).toBe(true);
+    expect(await Promise.race([outcome, Promise.resolve("pending")])).toBe("pending");
 
-    expect(await Promise.race([outcome, Promise.resolve("pending")])).toBe("rejected");
+    await vi.advanceTimersByTimeAsync(1);
+    await expect(outcome).resolves.toBe("Timed out waiting for OMP to become ready");
+    expect(harness.exitSubscribed()).toBe(false);
   });
 
   it("keeps protocol v1 when the ready frame has no matching capability", async () => {

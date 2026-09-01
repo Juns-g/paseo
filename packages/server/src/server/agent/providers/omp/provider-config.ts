@@ -8,7 +8,7 @@ import type { ProviderRuntimeSettings } from "../../provider-launch-config.js";
 
 const OMP_SESSION_DIR = "~/.omp/agent/sessions";
 const DEFAULT_OMP_MODE_ID = "full";
-const DEFAULT_OMP_READY_TIMEOUT_MS = 10_000;
+const DEFAULT_OMP_READY_TIMEOUT_MS = 20_000;
 const DEFAULT_OMP_RPC_TIMEOUT_MS = 60_000;
 
 export const MIN_SUPPORTED_OMP_VERSION = "16.3.9";
