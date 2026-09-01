@@ -5172,6 +5172,7 @@ class ClaudeAgentSession implements AgentSession {
     for (const image of images) {
       const imageItem = renderProviderImageOutputAsAssistantMarkdown(image, {
         materialize: materializeProviderImage,
+        imagePurpose: "inspection",
       });
       if (imageItem) {
         items.push(imageItem);

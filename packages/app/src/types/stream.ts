@@ -1,4 +1,5 @@
 import type {
+  AssistantImagePurpose,
   AgentProvider,
   AgentTimelineItem,
   ToolCallDetail,
@@ -575,7 +576,9 @@ function preserveReplacementHead(
     tailAssistant.messageId === undefined &&
     liveAssistant.text.startsWith(tailAssistant.text);
   const isNewerContinuation =
-    hasNewerCursor && (hasMatchingProviderMessageId || hasIdlessTextContinuation);
+    hasNewerCursor &&
+    liveAssistant.imagePurpose === tailAssistant.imagePurpose &&
+    (hasMatchingProviderMessageId || hasIdlessTextContinuation);
   if (isNewerContinuation) {
     const text = liveAssistant.text.startsWith(tailAssistant.text)
       ? liveAssistant.text
@@ -688,6 +691,7 @@ export interface AssistantMessageItem {
   turnId?: string;
   timelineCursor?: TimelinePosition;
   text: string;
+  imagePurpose?: AssistantImagePurpose;
   timestamp: Date;
   blockGroupId?: string;
   blockIndex?: number;
@@ -896,6 +900,7 @@ function appendAssistantMessage(
   messageId?: string,
   reservedItemIds?: ReadonlySet<string>,
   timelineCursor?: TimelinePosition,
+  imagePurpose?: AssistantImagePurpose,
 ): StreamItem[] {
   const { chunk, hasContent } = normalizeChunk(text);
   if (!chunk) {
@@ -903,10 +908,10 @@ function appendAssistantMessage(
   }
 
   const last = state[state.length - 1];
-  const shouldAppendToLast =
-    last &&
-    last.kind === "assistant_message" &&
-    (messageId === undefined || last.messageId === messageId);
+  const hasMatchingPurpose = (item: AssistantMessageItem) => item.imagePurpose === imagePurpose;
+  const canExtendMessage = (item: AssistantMessageItem) =>
+    hasMatchingPurpose(item) && (messageId === undefined || item.messageId === messageId);
+  const shouldAppendToLast = last && last.kind === "assistant_message" && canExtendMessage(last);
   if (shouldAppendToLast) {
     const updated: AssistantMessageItem = {
       ...last,
@@ -924,7 +929,7 @@ function appendAssistantMessage(
     source === "live" &&
     last?.kind === "user_message" &&
     secondLast?.kind === "assistant_message" &&
-    (messageId === undefined || secondLast.messageId === messageId)
+    canExtendMessage(secondLast)
   ) {
     const updated: AssistantMessageItem = {
       ...secondLast,
@@ -947,6 +952,7 @@ function appendAssistantMessage(
     ...(messageId ? { messageId } : {}),
     ...(timelineCursor ? { timelineCursor } : {}),
     text: chunk,
+    imagePurpose,
     timestamp,
   };
   return [...state, item];
@@ -1481,6 +1487,7 @@ function reduceTimelineEvent(
           item.messageId,
           reservedItemIds,
           timelineCursor,
+          item.imagePurpose,
         ),
       );
     case "reasoning":
@@ -1733,6 +1740,13 @@ function getTailAssistantToResume(params: {
   if (incomingMessageId !== undefined && params.tailAssistant.messageId !== incomingMessageId) {
     return null;
   }
+  if (
+    params.event.type === "timeline" &&
+    params.event.item.type === "assistant_message" &&
+    params.tailAssistant.imagePurpose !== params.event.item.imagePurpose
+  ) {
+    return null;
+  }
   return params.tailAssistant;
 }
 
@@ -1865,7 +1879,14 @@ function shouldFlushHead(input: {
 
   if (incomingKind === "assistant_message" && lastStreamable.kind === "assistant_message") {
     const incomingMessageId = getIncomingAssistantMessageId(event);
-    return incomingMessageId !== undefined && lastStreamable.messageId !== incomingMessageId;
+    if (incomingMessageId !== undefined && lastStreamable.messageId !== incomingMessageId) {
+      return true;
+    }
+    const incomingImagePurpose =
+      event.type === "timeline" && event.item.type === "assistant_message"
+        ? event.item.imagePurpose
+        : undefined;
+    return lastStreamable.imagePurpose !== incomingImagePurpose;
   }
 
   return false;
