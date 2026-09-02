@@ -232,6 +232,20 @@ async function callBrowserTool(client, name, args = {}) {
   return mcpPayload(await client.callTool({ name, args }), name);
 }
 
+async function callBrowserToolUntilReady(client, name, args = {}) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const result = await client.callTool({ name, args });
+    const payload = result.structuredContent;
+    if (payload?.ok === true) return payload.result;
+    if (payload?.ok !== false || payload.error?.retryable !== true) {
+      return mcpPayload(result, name);
+    }
+    await delay(100);
+  }
+  throw new Error(`${name} remained unavailable for ${timeoutMs}ms`);
+}
+
 async function waitForGuestSelector(client, browserId) {
   const deadline = Date.now() + 5_000;
   while (Date.now() < deadline) {
@@ -566,9 +580,21 @@ async function runRegression({ page, client, serverId, targetUrl, callerAgentId,
   const responsiveViewport = await readViewport(client, browserId);
 
   await originalDeck.getByTestId(`workspace-tab-agent_${callerAgentId}`).click();
-  await page.waitForTimeout(500);
+  await page.waitForFunction(
+    ({ id, webContentsId }) => {
+      const webview = document.querySelector(`[data-paseo-browser-id="${id}"]`);
+      return (
+        webview?.parentElement?.getAttribute("data-paseo-browser-surface") === id &&
+        webview.parentElement.style.width === "1px" &&
+        webview.parentElement.style.pointerEvents === "none" &&
+        webview.getWebContentsId() === webContentsId
+      );
+    },
+    { id: browserId, webContentsId: firstGuest.webContentsId },
+    { timeout: timeoutMs },
+  );
   try {
-    await callBrowserTool(client, "browser_screenshot", { browserId });
+    await callBrowserToolUntilReady(client, "browser_screenshot", { browserId });
   } catch (error) {
     failures.push(`inactive browser remains captureable: ${String(error)}`);
   }
@@ -808,7 +834,7 @@ async function runRegression({ page, client, serverId, targetUrl, callerAgentId,
   await originalDeck.getByRole("button", { name: "Cancel element selector" }).click();
 
   await originalDeck.getByTestId(`workspace-tab-agent_${callerAgentId}`).click();
-  await page.getByRole("button", { name: "Open command center" }).click();
+  await page.getByTestId("sidebar-search").click();
   await page.getByTestId("command-center-input").fill("Split pane right");
   await page.getByText("Split pane right", { exact: true }).click();
   assert(
