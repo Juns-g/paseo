@@ -39,6 +39,11 @@ import { CodexAppServerAgentClient } from "./providers/codex-app-server-agent.js
 import { CopilotACPAgentClient } from "./providers/copilot-acp-agent.js";
 import { CursorACPAgentClient } from "./providers/cursor-acp-agent.js";
 import { GenericACPAgentClient } from "./providers/generic-acp-agent.js";
+import {
+  OMP_ACP_DEFAULT_MODE_ID,
+  OMP_ACP_MODES,
+  OmpAcpAgentClient,
+} from "./providers/omp-acp-agent.js";
 import { KimiACPAgentClient } from "./providers/kimi-acp-agent.js";
 import { KiroACPAgentClient } from "./providers/kiro-acp-agent.js";
 import { OpenCodeAgentClient } from "./providers/opencode-agent.js";
@@ -759,6 +764,7 @@ function addDerivedProviders(
     if (!override.extends) {
       throw new Error(`Custom provider '${providerId}' requires an extends value`);
     }
+    const isOmpAcpProvider = providerId === "omp-acp";
 
     if (override.extends === "acp") {
       if (!override.command || !isNonEmptyStringArray(override.command)) {
@@ -774,8 +780,8 @@ function addDerivedProviders(
             id: providerId,
             label: override.label ?? providerId,
             description: override.description ?? "Custom ACP provider",
-            defaultModeId: null,
-            modes: [],
+            defaultModeId: isOmpAcpProvider ? OMP_ACP_DEFAULT_MODE_ID : null,
+            modes: isOmpAcpProvider ? OMP_ACP_MODES : [],
           },
           override,
         ),
@@ -795,6 +801,9 @@ function addDerivedProviders(
             label: override.label ?? providerId,
             providerParams: override.params,
           };
+          if (isOmpAcpProvider) {
+            return new OmpAcpAgentClient(acpOptions);
+          }
           if (providerId === "cursor") {
             return new CursorACPAgentClient(acpOptions);
           }

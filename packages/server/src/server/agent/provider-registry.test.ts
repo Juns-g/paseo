@@ -679,6 +679,27 @@ test("built-in OMP override keeps the real OMP adapter enabled and launchable", 
   await session.close();
 });
 
+test("omp-acp custom providers expose OMP approval modes with Full Access by default", () => {
+  const registry = buildProviderRegistry(logger, {
+    providerOverrides: {
+      "omp-acp": {
+        extends: "acp",
+        label: "OMP ACP",
+        command: ["omp", "--no-extensions", "acp"],
+      },
+    },
+  });
+
+  const definition = registry["omp-acp"];
+  expect(definition.defaultModeId).toBe("yolo");
+  expect(definition.modes.map((mode) => [mode.id, mode.label])).toEqual([
+    ["always-ask", "Ask Every Time"],
+    ["write", "Write Access"],
+    ["yolo", "Full Access"],
+  ]);
+  expect(definition.createClient(logger).provider).toBe("omp-acp");
+});
+
 test("new provider extending acp uses GenericACPAgentClient", () => {
   const registry = buildProviderRegistry(logger, {
     providerOverrides: {

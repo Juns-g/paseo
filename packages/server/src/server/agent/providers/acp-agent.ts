@@ -75,6 +75,7 @@ import {
   type AgentPersistenceHandle,
   type AgentPromptContentBlock,
   type AgentPromptInput,
+  type AgentProviderNotice,
   type AgentRunOptions,
   type AgentRunResult,
   type AgentRuntimeInfo,
@@ -415,7 +416,9 @@ interface ACPAgentClientOptions {
   logger: Logger;
   runtimeSettings?: ProviderRuntimeSettings;
   defaultCommand: [string, ...string[]];
+  sessionLaunchTransformer?: ACPSessionLaunchTransformer;
   defaultModes?: AgentMode[];
+  includeAutoAcceptFeature?: boolean;
   catalogModelResolver?: ACPCatalogModelResolver;
   modelTransformer?: (models: AgentModelDefinition[]) => AgentModelDefinition[];
   sessionResponseTransformer?: (response: SessionStateResponse) => SessionStateResponse;
@@ -446,7 +449,9 @@ interface ACPAgentSessionOptions {
   logger: Logger;
   runtimeSettings?: ProviderRuntimeSettings;
   defaultCommand: [string, ...string[]];
+  sessionLaunchTransformer?: ACPSessionLaunchTransformer;
   defaultModes: AgentMode[];
+  includeAutoAcceptFeature?: boolean;
   modelTransformer?: (models: AgentModelDefinition[]) => AgentModelDefinition[];
   sessionResponseTransformer?: (response: SessionStateResponse) => SessionStateResponse;
   configOptionsTransformer?: (configOptions: SessionConfigOption[]) => SessionConfigOption[];
@@ -518,6 +523,16 @@ interface PendingUserMessage {
 }
 
 export type SessionStateResponse = NewSessionResponse | LoadSessionResponse | ResumeSessionResponse;
+export interface ACPSessionLaunch {
+  command: string;
+  args: string[];
+  modeId?: string | null;
+}
+
+export type ACPSessionLaunchTransformer = (
+  config: AgentSessionConfig,
+  launch: ACPSessionLaunch,
+) => ACPSessionLaunch;
 
 interface TerminalExit {
   exitCode?: number | null;
@@ -592,6 +607,7 @@ export interface ACPProviderModeWriteResult {
   handled: boolean;
   currentModeId?: string;
   configOptions?: SessionConfigOption[];
+  notice?: AgentProviderNotice;
 }
 
 export interface ACPBeforeModeWriteResult {
@@ -792,13 +808,17 @@ function isACPCreateConfigUnattended(input: AgentCreateConfigUnattendedInput): b
 export class ACPAgentClient implements AgentClient {
   readonly provider: string;
   readonly capabilities: AgentCapabilityFlags;
-  readonly resolveCreateConfig = resolveACPCreateConfig;
-  readonly isCreateConfigUnattended = isACPCreateConfigUnattended;
+  readonly resolveCreateConfig: (
+    input: ResolveAgentCreateConfigInput,
+  ) => ResolveAgentCreateConfigResult;
+  readonly isCreateConfigUnattended: (input: AgentCreateConfigUnattendedInput) => boolean;
 
   protected readonly logger: Logger;
   protected readonly runtimeSettings?: ProviderRuntimeSettings;
   protected readonly defaultCommand: [string, ...string[]];
+  private readonly sessionLaunchTransformer?: ACPSessionLaunchTransformer;
   protected readonly defaultModes: AgentMode[];
+  private readonly includeAutoAcceptFeature: boolean;
   private readonly catalogModelResolver?: ACPCatalogModelResolver;
   private readonly modelTransformer?: (models: AgentModelDefinition[]) => AgentModelDefinition[];
   private readonly sessionResponseTransformer?: (
@@ -838,7 +858,15 @@ export class ACPAgentClient implements AgentClient {
     });
     this.runtimeSettings = options.runtimeSettings;
     this.defaultCommand = options.defaultCommand;
+    this.sessionLaunchTransformer = options.sessionLaunchTransformer;
     this.defaultModes = options.defaultModes ?? [];
+    this.includeAutoAcceptFeature = options.includeAutoAcceptFeature ?? true;
+    this.resolveCreateConfig = this.includeAutoAcceptFeature
+      ? resolveACPCreateConfig
+      : resolveDefaultAgentCreateConfig;
+    this.isCreateConfigUnattended = this.includeAutoAcceptFeature
+      ? isACPCreateConfigUnattended
+      : isDefaultAgentCreateConfigUnattended;
     this.catalogModelResolver = options.catalogModelResolver;
     this.modelTransformer = options.modelTransformer;
     this.sessionResponseTransformer = options.sessionResponseTransformer;
@@ -868,7 +896,9 @@ export class ACPAgentClient implements AgentClient {
         logger: this.logger,
         runtimeSettings: this.runtimeSettings,
         defaultCommand: this.defaultCommand,
+        sessionLaunchTransformer: this.sessionLaunchTransformer,
         defaultModes: this.defaultModes,
+        includeAutoAcceptFeature: this.includeAutoAcceptFeature,
         modelTransformer: this.modelTransformer,
         sessionResponseTransformer: this.sessionResponseTransformer,
         configOptionsTransformer: this.configOptionsTransformer,
@@ -918,7 +948,9 @@ export class ACPAgentClient implements AgentClient {
       logger: this.logger,
       runtimeSettings: this.runtimeSettings,
       defaultCommand: this.defaultCommand,
+      sessionLaunchTransformer: this.sessionLaunchTransformer,
       defaultModes: this.defaultModes,
+      includeAutoAcceptFeature: this.includeAutoAcceptFeature,
       modelTransformer: this.modelTransformer,
       sessionResponseTransformer: this.sessionResponseTransformer,
       configOptionsTransformer: this.configOptionsTransformer,
@@ -1023,9 +1055,9 @@ export class ACPAgentClient implements AgentClient {
   }
 
   async listFeatures(config: AgentSessionConfig): Promise<AgentFeature[]> {
-    const autoAcceptFeature = buildACPAutoAcceptFeature(config);
+    const baseFeatures = this.includeAutoAcceptFeature ? [buildACPAutoAcceptFeature(config)] : [];
     if (this.configFeatureOptions.length === 0) {
-      return [autoAcceptFeature];
+      return baseFeatures;
     }
 
     this.assertProvider(config);
@@ -1039,7 +1071,7 @@ export class ACPAgentClient implements AgentClient {
       );
       const transformed = this.transformSessionResponse(response);
       return [
-        autoAcceptFeature,
+        ...baseFeatures,
         ...deriveFeaturesFromACP(transformed.configOptions, this.configFeatureOptions),
       ];
     } finally {
@@ -1398,7 +1430,9 @@ export class ACPAgentSession implements AgentSession, ACPClient {
   private readonly logger: Logger;
   private readonly runtimeSettings?: ProviderRuntimeSettings;
   private readonly defaultCommand: [string, ...string[]];
+  private readonly sessionLaunchTransformer?: ACPSessionLaunchTransformer;
   private readonly defaultModes: AgentMode[];
+  private readonly includeAutoAcceptFeature: boolean;
   protected readonly modelTransformer?: (models: AgentModelDefinition[]) => AgentModelDefinition[];
   private readonly sessionResponseTransformer?: (
     response: SessionStateResponse,
@@ -1439,6 +1473,8 @@ export class ACPAgentSession implements AgentSession, ACPClient {
   private agentCapabilities: ACPAgentCapabilities | null = null;
   private sessionId: string | null = null;
   private currentMode: string | null = null;
+  private configuredMode: string | null = null;
+  private launchModeId: string | null = null;
   private availableModes: AgentMode[];
   private currentModel: string | null = null;
   private availableModels: AvailableACPModel[] | null = null;
@@ -1468,7 +1504,9 @@ export class ACPAgentSession implements AgentSession, ACPClient {
     this.logger = options.logger.child({ module: "agent", provider: options.provider });
     this.runtimeSettings = options.runtimeSettings;
     this.defaultCommand = options.defaultCommand;
+    this.sessionLaunchTransformer = options.sessionLaunchTransformer;
     this.defaultModes = options.defaultModes;
+    this.includeAutoAcceptFeature = options.includeAutoAcceptFeature ?? true;
     this.modelTransformer = options.modelTransformer;
     this.sessionResponseTransformer = options.sessionResponseTransformer;
     this.configOptionsTransformer = options.configOptionsTransformer;
@@ -1486,6 +1524,7 @@ export class ACPAgentSession implements AgentSession, ACPClient {
     this.initialHandle = options.handle;
     this.config = { ...config, provider: options.provider };
     this.currentMode = config.modeId ?? null;
+    this.configuredMode = config.modeId ?? null;
     this.currentModel = config.model ?? null;
     this.thinkingOptionId = config.thinkingOptionId ?? null;
     this.currentTitle = config.title ?? null;
@@ -1690,9 +1729,13 @@ export class ACPAgentSession implements AgentSession, ACPClient {
     return this.currentMode;
   }
 
+  getConfiguredMode(): string | null {
+    return this.configuredMode;
+  }
+
   get features(): AgentFeature[] {
     return [
-      buildACPAutoAcceptFeature(this.config),
+      ...(this.includeAutoAcceptFeature ? [buildACPAutoAcceptFeature(this.config)] : []),
       ...deriveFeaturesFromACP(this.configOptions, this.configFeatureOptions),
     ];
   }
@@ -1753,7 +1796,7 @@ export class ACPAgentSession implements AgentSession, ACPClient {
     return this.cachedCommands;
   }
 
-  async setMode(modeId: string): Promise<void> {
+  async setMode(modeId: string): Promise<void | AgentProviderNotice> {
     if (!this.connection || !this.sessionId) {
       throw new Error("ACP session not initialized");
     }
@@ -1763,7 +1806,7 @@ export class ACPAgentSession implements AgentSession, ACPClient {
       availableModes: this.availableModes,
       configOptions: this.configOptions,
     });
-    await this.setModeWithSelection({ modeId, selection });
+    return this.setModeWithSelection({ modeId, selection });
   }
 
   // Mode/model selection updates stay after ACP RPC success; this intentionally diverges from Zed's optimistic rollback path (acp.rs:3080-3104).
@@ -1773,7 +1816,7 @@ export class ACPAgentSession implements AgentSession, ACPClient {
   }: {
     modeId: string;
     selection: ACPModeSelection;
-  }): Promise<void> {
+  }): Promise<void | AgentProviderNotice> {
     if (!this.connection || !this.sessionId) {
       throw new Error("ACP session not initialized");
     }
@@ -1783,6 +1826,8 @@ export class ACPAgentSession implements AgentSession, ACPClient {
       ? await this.providerModeWriter(context)
       : { handled: false };
     if (providerResult.handled) {
+      this.configuredMode = modeId;
+      this.config.modeId = modeId;
       this.currentMode = providerResult.currentModeId ?? modeId;
       if (providerResult.configOptions) {
         this.configOptions = this.transformConfigOptions(providerResult.configOptions);
@@ -1794,7 +1839,7 @@ export class ACPAgentSession implements AgentSession, ACPClient {
         currentModeId: this.currentMode,
         availableModes: [...this.availableModes],
       });
-      return;
+      return providerResult.notice;
     }
 
     if (selection.hasAvailableModes) {
@@ -1834,6 +1879,8 @@ export class ACPAgentSession implements AgentSession, ACPClient {
 
     if (selection.hasAvailableModes) {
       await this.connection.setSessionMode({ sessionId: this.sessionId, modeId });
+      this.configuredMode = modeId;
+      this.config.modeId = modeId;
       this.currentMode = modeId;
       this.pushEvent({
         type: "mode_changed",
@@ -1861,6 +1908,8 @@ export class ACPAgentSession implements AgentSession, ACPClient {
       requestedValue: modeId,
       label: "mode",
     });
+    this.configuredMode = this.currentMode;
+    this.config.modeId = this.currentMode ?? undefined;
     this.availableModes = deriveModesFromACP(this.defaultModes, null, this.configOptions).modes;
     this.pushEvent({
       type: "mode_changed",
@@ -2034,7 +2083,7 @@ export class ACPAgentSession implements AgentSession, ACPClient {
       throw new Error("ACP session not initialized");
     }
 
-    if (featureId === ACP_AUTO_ACCEPT_FEATURE_ID) {
+    if (featureId === ACP_AUTO_ACCEPT_FEATURE_ID && this.includeAutoAcceptFeature) {
       this.config.featureValues = {
         ...this.config.featureValues,
         [ACP_AUTO_ACCEPT_FEATURE_ID]: value === true,
@@ -2230,7 +2279,9 @@ export class ACPAgentSession implements AgentSession, ACPClient {
 
   async requestPermission(params: RequestPermissionRequest): Promise<RequestPermissionResponse> {
     const canAutoAccept =
-      isACPAutoAcceptEnabled(this.config) && !isACPChooserRequest(params.options);
+      this.includeAutoAcceptFeature &&
+      isACPAutoAcceptEnabled(this.config) &&
+      !isACPChooserRequest(params.options);
     if (canAutoAccept) {
       const allowOption = selectPermissionOption(params.options, { behavior: "allow" });
       if (allowOption) {
@@ -2479,9 +2530,17 @@ export class ACPAgentSession implements AgentSession, ACPClient {
       throw new Error(`${this.provider} command '${this.defaultCommand[0]}' not found`);
     }
 
-    const command = prefix.command;
-    const args = [...prefix.args, ...this.defaultCommand.slice(1)];
-    const child = spawnProcess(command, args, {
+    const launch = this.sessionLaunchTransformer
+      ? this.sessionLaunchTransformer(this.config, {
+          command: prefix.command,
+          args: [...prefix.args, ...this.defaultCommand.slice(1)],
+        })
+      : {
+          command: prefix.command,
+          args: [...prefix.args, ...this.defaultCommand.slice(1)],
+        };
+    this.launchModeId = launch.modeId ?? null;
+    const child = spawnProcess(launch.command, launch.args, {
       cwd: this.config.cwd,
       ...createProviderEnvSpec({
         runtimeSettings: this.runtimeSettings,
@@ -2556,7 +2615,10 @@ export class ACPAgentSession implements AgentSession, ACPClient {
 
     const modeInfo = deriveModesFromACP(this.defaultModes, transformed.modes, this.configOptions);
     this.availableModes = modeInfo.modes;
-    this.currentMode = modeInfo.currentModeId ?? this.currentMode;
+    this.currentMode =
+      this.launchModeId && this.availableModes.some((mode) => mode.id === this.launchModeId)
+        ? this.launchModeId
+        : (modeInfo.currentModeId ?? this.currentMode);
 
     this.availableModels = transformed.models?.availableModels ?? null;
     this.currentModel =
@@ -2663,7 +2725,9 @@ export class ACPAgentSession implements AgentSession, ACPClient {
         this.fallbackAssistantMessageId = null;
         return [...pendingUserEvents, this.wrapTimeline(mapPlanToTimeline(update))];
       case "current_mode_update":
-        this.handleCurrentModeUpdate(update);
+        if (!this.handleCurrentModeUpdate(update)) {
+          return pendingUserEvents;
+        }
         return [
           ...pendingUserEvents,
           {
@@ -2789,8 +2853,13 @@ export class ACPAgentSession implements AgentSession, ACPClient {
     return this.fallbackAssistantMessageId;
   }
 
-  private handleCurrentModeUpdate(update: CurrentModeUpdate): void {
-    this.currentMode = this.transformModeId(update.currentModeId);
+  private handleCurrentModeUpdate(update: CurrentModeUpdate): boolean {
+    const modeId = this.transformModeId(update.currentModeId);
+    if (modeId === null) {
+      return false;
+    }
+    this.currentMode = modeId;
+    return true;
   }
 
   private handleConfigOptionUpdate(update: ConfigOptionUpdate): AgentStreamEvent[] {

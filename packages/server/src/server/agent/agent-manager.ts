@@ -1704,7 +1704,7 @@ export class AgentManager {
     const notice = (await agent.session.setMode(modeId)) ?? null;
     await this.drainSessionEvents(agentId);
     const currentMode = (await agent.session.getCurrentMode()) ?? modeId;
-    agent.config.modeId = currentMode ?? undefined;
+    agent.config.modeId = agent.session.getConfiguredMode?.() ?? currentMode ?? undefined;
     agent.currentModeId = currentMode;
     // Update runtimeInfo to reflect the new mode
     if (agent.runtimeInfo) {

@@ -1,15 +1,20 @@
 import type { Logger } from "pino";
 import { z } from "zod";
+import type { SessionConfigOption } from "@agentclientprotocol/sdk";
 
-import type { AgentCapabilityFlags } from "../agent-sdk-types.js";
+import type { AgentCapabilityFlags, AgentMode } from "../agent-sdk-types.js";
 import { checkProviderLaunchAvailable, resolveProviderLaunch } from "../provider-launch-config.js";
 import {
   ACPAgentClient,
   type ACPCatalogModelResolver,
   type ACPClientCapabilityMeta,
   type ACPConfigFeatureOption,
+  type ACPProviderModeWriteResult,
+  type ACPProviderModeWriterContext,
   DEFAULT_ACP_CAPABILITIES,
   type ACPExtensionCommandsParser,
+  type ACPSessionLaunchTransformer,
+  type SessionStateResponse,
 } from "./acp-agent.js";
 import {
   buildBinaryDiagnosticRows,
@@ -44,6 +49,15 @@ interface GenericACPAgentClientOptions {
   providerId?: string;
   label?: string;
   providerParams?: unknown;
+  defaultModes?: AgentMode[];
+  includeAutoAcceptFeature?: boolean;
+  sessionLaunchTransformer?: ACPSessionLaunchTransformer;
+  sessionResponseTransformer?: (response: SessionStateResponse) => SessionStateResponse;
+  configOptionsTransformer?: (configOptions: SessionConfigOption[]) => SessionConfigOption[];
+  modeIdTransformer?: (modeId: string) => string | null;
+  providerModeWriter?: (
+    context: ACPProviderModeWriterContext,
+  ) => Promise<ACPProviderModeWriteResult>;
   waitForInitialCommands?: boolean;
   initialCommandsWaitTimeoutMs?: number;
   diagnosticPhaseTimeoutMs?: number;
@@ -68,6 +82,13 @@ export class GenericACPAgentClient extends ACPAgentClient {
         env: options.env,
       },
       defaultCommand: options.command,
+      defaultModes: options.defaultModes,
+      includeAutoAcceptFeature: options.includeAutoAcceptFeature,
+      sessionLaunchTransformer: options.sessionLaunchTransformer,
+      sessionResponseTransformer: options.sessionResponseTransformer,
+      configOptionsTransformer: options.configOptionsTransformer,
+      modeIdTransformer: options.modeIdTransformer,
+      providerModeWriter: options.providerModeWriter,
       capabilities: buildGenericACPCapabilities(providerParams),
       waitForInitialCommands: options.waitForInitialCommands,
       initialCommandsWaitTimeoutMs: options.initialCommandsWaitTimeoutMs,

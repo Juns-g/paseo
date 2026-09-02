@@ -2244,6 +2244,60 @@ test("setAgentMode persists the selected mode across session reload", async () =
   expect(reloaded.currentModeId).toBe("full-access");
 });
 
+test("setAgentMode persists a restart-required mode while keeping the live mode", async () => {
+  const workdir = mkdtempSync(join(tmpdir(), "agent-manager-restart-mode-test-"));
+  const storage = new AgentStorage(join(workdir, "agents"), logger);
+
+  class RestartModeSession extends TestAgentSession {
+    private configuredMode: string | null = "yolo";
+
+    override async getCurrentMode() {
+      return "yolo";
+    }
+
+    override async setMode(modeId: string) {
+      this.configuredMode = modeId;
+      return { type: "warning" as const, message: "Restart required" };
+    }
+
+    getConfiguredMode() {
+      return this.configuredMode;
+    }
+  }
+
+  class RestartModeClient extends TestAgentClient {
+    readonly session = new RestartModeSession({ provider: "codex", cwd: workdir });
+
+    override async createSession(): Promise<AgentSession> {
+      return this.session;
+    }
+  }
+
+  const client = new RestartModeClient();
+  const manager = new AgentManager({
+    clients: { codex: client },
+    registry: storage,
+    logger,
+    idFactory: () => "00000000-0000-4000-8000-000000000302",
+  });
+
+  const snapshot = await manager.createAgent(
+    { provider: "codex", cwd: workdir, modeId: "yolo" },
+    undefined,
+    { workspaceId: undefined },
+  );
+  await expect(manager.setAgentMode(snapshot.id, "write")).resolves.toEqual({
+    type: "warning",
+    message: "Restart required",
+  });
+
+  const updated = manager.getAgent(snapshot.id);
+  expect(updated?.currentModeId).toBe("yolo");
+  expect(updated?.config.modeId).toBe("write");
+  await storage.flush();
+  expect((await storage.get(snapshot.id))?.config?.modeId).toBe("write");
+});
+
 test("reloadAgentSession completes when the previous session close hangs", async () => {
   const workdir = mkdtempSync(join(tmpdir(), "agent-manager-reload-close-timeout-"));
   const storagePath = join(workdir, "agents");

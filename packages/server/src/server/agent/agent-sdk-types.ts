@@ -647,6 +647,8 @@ export interface AgentSession {
   getAvailableModes(): Promise<AgentMode[]>;
   getCurrentMode(): Promise<string | null>;
   setMode(modeId: string): Promise<void | AgentProviderNotice>;
+  /** Mode to persist when it intentionally differs from the live runtime mode. */
+  getConfiguredMode?(): string | null;
   getPendingPermissions(): AgentPermissionRequest[];
   respondToPermission(
     requestId: string,
