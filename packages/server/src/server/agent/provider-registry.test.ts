@@ -679,7 +679,7 @@ test("built-in OMP override keeps the real OMP adapter enabled and launchable", 
   await session.close();
 });
 
-test("omp-acp custom providers expose OMP approval modes with Full Access by default", () => {
+test("omp-acp custom providers expose OMP approval modes with Ask Every Time by default", () => {
   const registry = buildProviderRegistry(logger, {
     providerOverrides: {
       "omp-acp": {
@@ -691,7 +691,7 @@ test("omp-acp custom providers expose OMP approval modes with Full Access by def
   });
 
   const definition = registry["omp-acp"];
-  expect(definition.defaultModeId).toBe("yolo");
+  expect(definition.defaultModeId).toBe("always-ask");
   expect(definition.modes.map((mode) => [mode.id, mode.label])).toEqual([
     ["always-ask", "Ask Every Time"],
     ["write", "Write Access"],

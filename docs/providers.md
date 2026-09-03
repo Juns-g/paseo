@@ -79,11 +79,12 @@ The custom `omp-acp` provider is a thin ACP adapter for an OMP command configure
 `extends: "acp"`. It exposes OMP's `always-ask`, `write`, and `yolo` approval values as
 `Ask Every Time`, `Write Access`, and `Full Access`. The selected value is injected into
 the per-session `omp --approval-mode <value>` launch, including resumed sessions; a
-missing value defaults to `yolo` (`Full Access`). OMP does not expose an ACP request for
-changing this process setting, so changing it on a live session keeps the current mode and
-returns a restart notice. Provider preferences persist a new-session selection, while persisted
-agent config restores `modeId` when that session is resumed. Generic `extends: "acp"`
-providers retain their existing ACP modes and `Auto Accept` behavior.
+missing value defaults to `always-ask` (`Ask Every Time`) rather than inheriting the user's
+machine-level OMP preference. OMP does not expose an ACP request for changing this process
+setting, so changing it on a live session keeps the current mode and returns a restart notice.
+Provider preferences persist a new-session selection, while persisted agent config restores
+`modeId` when that session is resumed. Generic `extends: "acp"` providers retain their existing
+ACP modes and `Auto Accept` behavior.
 
 Pi RPC extension UI dialog requests (`select`, `input`, `editor`, `confirm`) are bridged into Paseo question permissions and answered with `extension_ui_response`. Pi extensions such as `ask_user` may chain dialogs: for example, a `select` can be followed by an optional-comment `input`. When an `ask_user` tool call declares `allowComment: true`, Paseo presents the selection and optional comment as one question permission, answers Pi's initial `select` immediately, then auto-answers the follow-up optional `input` with the comment the user already supplied (or an empty string). Preserve placeholders and optional/skip semantics for standalone optional inputs so the app can still distinguish "skip this optional input" from "cancel the whole dialog." Fire-and-forget extension UI requests such as notifications are intentionally ignored by the provider adapter unless Paseo grows first-class UI for them.
 

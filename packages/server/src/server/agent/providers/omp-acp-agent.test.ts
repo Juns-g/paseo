@@ -52,8 +52,8 @@ interface LiveOmpAcpSessionInternals {
 }
 
 describe("OMP ACP approval modes", () => {
-  test("exposes OMP approval values and defaults to Full Access", () => {
-    expect(OMP_ACP_DEFAULT_MODE_ID).toBe("yolo");
+  test("exposes OMP approval values and defaults to Ask Every Time", () => {
+    expect(OMP_ACP_DEFAULT_MODE_ID).toBe("always-ask");
     expect(OMP_ACP_MODES).toEqual([
       expect.objectContaining({
         id: "always-ask",
@@ -86,16 +86,16 @@ describe("OMP ACP approval modes", () => {
     },
   );
 
-  test("defaults to yolo and replaces an existing CLI override", () => {
+  test("defaults to always-ask and replaces an existing CLI override", () => {
     expect(
       buildOmpAcpSessionLaunch(baseConfig, {
         command: "omp",
-        args: ["--approval-mode=always-ask", "--no-extensions", "acp"],
+        args: ["--approval-mode=yolo", "--no-extensions", "acp"],
       }),
     ).toEqual({
       command: "omp",
-      args: ["--no-extensions", "--approval-mode", "yolo", "acp"],
-      modeId: "yolo",
+      args: ["--no-extensions", "--approval-mode", "always-ask", "acp"],
+      modeId: "always-ask",
     });
   });
 

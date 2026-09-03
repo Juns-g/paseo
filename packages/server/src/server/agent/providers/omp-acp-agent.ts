@@ -11,7 +11,7 @@ import type {
 } from "./acp-agent.js";
 import { GenericACPAgentClient } from "./generic-acp-agent.js";
 
-export const OMP_ACP_DEFAULT_MODE_ID = "yolo" as const;
+export const OMP_ACP_DEFAULT_MODE_ID = "always-ask" as const;
 export const OMP_ACP_MODES: AgentProviderModeDefinition[] = [
   {
     id: "always-ask",
