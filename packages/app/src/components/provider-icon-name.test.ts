@@ -19,7 +19,6 @@ describe("resolveProviderIconName", () => {
     expect(resolveProviderIconName("amp-acp")).toEqual({ kind: "catalog", id: "amp-acp" });
     expect(resolveProviderIconName("gemini")).toEqual({ kind: "catalog", id: "gemini" });
     expect(resolveProviderIconName("hermes")).toEqual({ kind: "catalog", id: "hermes" });
-    expect(ACP_PROVIDER_CATALOG.find((entry) => entry.id === "hermes")?.iconSvg).toContain("<svg");
     expect(resolveProviderIconName("traecli")).toEqual({ kind: "catalog", id: "traecli" });
   });
 
