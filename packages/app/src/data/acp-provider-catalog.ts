@@ -221,7 +221,7 @@ const CATALOG_DATA = [
     title: "Hermes",
     description: "Nous Research self-improving AI agent",
     version: "manual",
-    iconId: null,
+    iconId: "hermes",
     installLink: "https://hermes-agent.nousresearch.com/docs/user-guide/features/acp",
     command: ["hermes", "acp"],
   },
