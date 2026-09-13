@@ -141,8 +141,14 @@ export const SidebarWorkspaceRowContent = memo(function SidebarWorkspaceRowConte
         {leadingProjectName ? (
           <ProjectStatusIndicator
             iconDataUri={leadingProjectIconDataUri}
-            displayName={leadingProjectIconDataUri ? leadingProjectName : (workspaceLabel || leadingProjectName)}
-            projectViewKey={leadingProjectIconDataUri ? workspace.projectViewKey : (workspace.workspaceKey || workspace.projectViewKey)}
+            displayName={
+              leadingProjectIconDataUri ? leadingProjectName : workspaceLabel || leadingProjectName
+            }
+            projectViewKey={
+              leadingProjectIconDataUri
+                ? workspace.projectViewKey
+                : workspace.workspaceKey || workspace.projectViewKey
+            }
             statusBucket={workspace.statusBucket}
             backdrop={backdrop}
             loading={isLoading}
@@ -343,6 +349,8 @@ export function SidebarWorkspaceShortcutBadge({ number }: { number: number }) {
   );
 }
 
+export type SidebarWorkspaceTrailingPresentation = "visible" | "hidden" | "absent";
+
 /**
  * What the trailing slot shows for a row. Derived in one place because three row renderers
  * share it: the two project-mode rows and the status-mode row. The rule used to be copied
@@ -368,7 +376,7 @@ export function resolveTrailingActionVisibility({
   isTouchPlatform: boolean;
   showShortcut: boolean;
 }): {
-  showTrailing: boolean;
+  trailingPresentation: SidebarWorkspaceTrailingPresentation;
   showKebab: boolean;
   showScrim: boolean;
   renderSlot: boolean;
@@ -376,9 +384,13 @@ export function resolveTrailingActionVisibility({
 } {
   const hasTrailing = hasSidebarWorkspaceTrailing({ workspace, trailing });
   const showKebab = Boolean(hasArchiveAction && (isHovered || isTouchPlatform)) && !showShortcut;
-  const showTrailing = hasTrailing && !showShortcut && (isHovered || !showKebab);
+  // Touch permanently replaces the stats with the menu. Only temporary shortcut hints
+  // conceal content while retaining its width, so desktop rows do not shift.
+  const hasContent = hasTrailing && !(hasArchiveAction && isTouchPlatform);
+  let trailingPresentation: SidebarWorkspaceTrailingPresentation = "absent";
+  if (hasContent) trailingPresentation = showShortcut ? "hidden" : "visible";
   return {
-    showTrailing,
+    trailingPresentation,
     showKebab,
     // The scrim paints the row's own hover background, so it can only be drawn on a hovered
     // row — over an unhovered one the gradient fades to the wrong color. That is also why
@@ -389,7 +401,7 @@ export function resolveTrailingActionVisibility({
     // does; the kebab only does on touch, where there is no hover for it to appear on and so
     // no scrim to let it overlay the title. Everywhere else the width goes back to the title
     // and the kebab fades in over its tail.
-    reserveSlotWidth: hasTrailing || (hasArchiveAction && isTouchPlatform),
+    reserveSlotWidth: hasContent || (hasArchiveAction && isTouchPlatform),
   };
 }
 
@@ -414,14 +426,18 @@ export function SidebarWorkspaceTrailingActionSlot({
 }
 
 export function SidebarWorkspaceTrailingActionBase({
-  visible,
+  presentation,
   children,
 }: {
-  visible: boolean;
+  presentation: SidebarWorkspaceTrailingPresentation;
   children: ReactNode;
 }) {
-  if (!children) return null;
-  return <View style={visible ? undefined : sidebarWorkspaceRowStyles.hidden}>{children}</View>;
+  if (presentation === "absent") return null;
+  return (
+    <View style={presentation === "hidden" ? sidebarWorkspaceRowStyles.hidden : undefined}>
+      {children}
+    </View>
+  );
 }
 
 export function SidebarWorkspaceTrailingActionOverlay({
