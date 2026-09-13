@@ -513,6 +513,14 @@ For tighter loops, you can rebuild a single workspace:
 - Changed `packages/server/src/*`, `packages/cli/src/*`, `packages/relay/src/*`, or `packages/highlight/src/*`: `npm run build:server`.
 - Changed app build dependencies: `npm run build:app-deps`.
 
+### Local desktop fork builds
+
+Build the complete desktop with `npm run build:desktop -- --dir --mac --arm64`; this exports the renderer and builds the daemon and CLI together. Keep the fork version from its package manifests. Validate the packaged CLI, an isolated daemon using the intended configuration, and the desktop before replacing the installed app. Local Apple Silicon builds need a local signing identity or an ad-hoc signature; ad-hoc signing is not vendor notarization. Preserve the previous complete app and configuration for rollback.
+
+### 避坑记录 / 已验证不可行
+
+On 2026-09-13, replacing only the installed ASAR after a manual server overlay produced an invalid CLI `package.json` (its bytes began with `ap{`). The running older daemon also rejected the new `inference` key. Do not replay that overlay or treat a successful file copy as installation verification. A complete build of fork `f19b480b9` passed CLI, signing, isolated daemon startup, and the 12 HTTP metadata tests; the configured endpoint also returned a valid title. Keep `inference` configuration and the matching daemon build together.
+
 ## Dependency patches
 
 `patches/*.patch` are applied by `scripts/postinstall-patches.mjs` on every install. A patch only
