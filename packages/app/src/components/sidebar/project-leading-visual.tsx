@@ -124,9 +124,8 @@ export function ProjectStatusIndicator({
   loading?: boolean;
   testID?: string;
 }) {
-  const placeholderInitial = projectIconPlaceholderLabelFromDisplayName(displayName)
-    .charAt(0)
-    .toUpperCase();
+  const initialStr = projectIconPlaceholderLabelFromDisplayName(displayName);
+  const placeholderInitial = (Array.from(initialStr)[0] || "").toUpperCase();
   // A row that's still starting up and a row that's working are both "busy", and at this size
   // there's no room to draw the difference — so `loading` just resolves to the running bucket
   // and they share one badge.
