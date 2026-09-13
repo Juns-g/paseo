@@ -21,7 +21,7 @@ import {
 import { Session } from "./session.js";
 import { OWNER_PERMISSIONS, type DaemonPermission } from "./authorization/index.js";
 import { DownloadTokenStore } from "./file-download/token-store.js";
-import { StructuredAgentFallbackError } from "./agent/agent-response-loop.js";
+import { StructuredTextGenerationError } from "./session/checkout/http-structured-text-generation.js";
 import type { StoredAgentRecord } from "./agent/agent-storage.js";
 import type { AgentManagerEvent } from "./agent/agent-manager.js";
 import type { ProviderSnapshotManager } from "./agent/provider-snapshot-manager.js";
@@ -196,9 +196,9 @@ const checkoutGitMocks = vi.hoisted(() => ({
   warmCheckoutShortstatInBackground: vi.fn(),
 }));
 
-const agentResponseMocks = vi.hoisted(() => ({
-  generateStructuredAgentResponseWithFallback: vi.fn(),
-}));
+const structuredTextGeneration = {
+  generate: vi.fn(),
+};
 
 const spawnMocks = vi.hoisted(() => ({
   spawnWorkspaceScript: vi.fn(),
@@ -261,15 +261,6 @@ vi.mock("../utils/run-git-command.js", async (importOriginal) => {
   return {
     ...actual,
     runGitCommand: gitCommandMocks.runGitCommand,
-  };
-});
-
-vi.mock("./agent/agent-response-loop.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("./agent/agent-response-loop.js")>();
-  return {
-    ...actual,
-    generateStructuredAgentResponseWithFallback:
-      agentResponseMocks.generateStructuredAgentResponseWithFallback,
   };
 });
 
@@ -360,6 +351,7 @@ function createSessionForTest(options: SessionForTestOptions = {}): Session {
   const messages = options.messages ?? [];
 
   const sessionOptions: SessionOptions = {
+    structuredTextGeneration,
     clientId: "test-client",
     onMessage: (message) => messages.push(message),
     ...(options.targetedMessages
@@ -2396,7 +2388,7 @@ diff --git a/file.txt b/file.txt
       getSnapshot: vi.fn().mockResolvedValue({}),
       resolveRepoRoot: vi.fn().mockResolvedValue(repoRoot),
     };
-    agentResponseMocks.generateStructuredAgentResponseWithFallback.mockResolvedValue({
+    structuredTextGeneration.generate.mockResolvedValue({
       message: "Update file",
     });
     checkoutGitMocks.commitChanges.mockResolvedValue(undefined);
@@ -2410,9 +2402,7 @@ diff --git a/file.txt b/file.txt
       requestId: "request-generated-commit",
     });
 
-    return String(
-      agentResponseMocks.generateStructuredAgentResponseWithFallback.mock.calls[0]?.[0].prompt,
-    );
+    return String(structuredTextGeneration.generate.mock.calls[0]?.[0].prompt);
   }
 
   test("forces a workspace git snapshot refresh after committing", async () => {
@@ -2471,7 +2461,7 @@ diff --git a/file.txt b/file.txt
       }),
       getSnapshot: vi.fn().mockResolvedValue({}),
     };
-    agentResponseMocks.generateStructuredAgentResponseWithFallback.mockResolvedValue({
+    structuredTextGeneration.generate.mockResolvedValue({
       message: "Update file",
     });
     checkoutGitMocks.commitChanges.mockResolvedValue(undefined);
@@ -2490,13 +2480,9 @@ diff --git a/file.txt b/file.txt
       mode: "uncommitted",
       includeStructured: true,
     });
-    expect(agentResponseMocks.generateStructuredAgentResponseWithFallback).toHaveBeenCalledWith(
+    expect(structuredTextGeneration.generate).toHaveBeenCalledWith(
       expect.objectContaining({
-        persistSession: false,
-        agentConfigOverrides: expect.objectContaining({
-          title: "Commit generator",
-          internal: true,
-        }),
+        schemaName: "CommitMessage",
       }),
     );
     expect(checkoutGitMocks.commitChanges).toHaveBeenCalledWith("/tmp/request-worktree", {
@@ -2576,9 +2562,7 @@ diff --git a/file.txt b/file.txt
       getSnapshot: vi.fn().mockResolvedValue({}),
       resolveRepoRoot: vi.fn().mockResolvedValue(makeRoot()),
     };
-    agentResponseMocks.generateStructuredAgentResponseWithFallback.mockRejectedValue(
-      new StructuredAgentFallbackError([]),
-    );
+    structuredTextGeneration.generate.mockRejectedValue(new StructuredTextGenerationError());
     checkoutGitMocks.commitChanges.mockResolvedValue(undefined);
     const session = createSessionForTest({ workspaceGitService, messages });
 
@@ -2691,7 +2675,7 @@ diff --git a/file.txt b/file.txt
       }),
       resolveRepoRoot: vi.fn().mockResolvedValue(repoRoot),
     };
-    agentResponseMocks.generateStructuredAgentResponseWithFallback.mockResolvedValue({
+    structuredTextGeneration.generate.mockResolvedValue({
       title: "Update file",
       body: "Updates file.",
     });
@@ -2710,7 +2694,7 @@ diff --git a/file.txt b/file.txt
       requestId: "request-generated-pr",
     });
 
-    return agentResponseMocks.generateStructuredAgentResponseWithFallback.mock.calls[0]?.[0];
+    return structuredTextGeneration.generate.mock.calls[0]?.[0];
   }
 
   async function generatePullRequestPromptWithConfig(config: unknown): Promise<string> {
@@ -2736,7 +2720,7 @@ diff --git a/file.txt b/file.txt
         ],
       }),
     };
-    agentResponseMocks.generateStructuredAgentResponseWithFallback.mockResolvedValue({
+    structuredTextGeneration.generate.mockResolvedValue({
       title: "Update file",
       body: "Updates file.",
     });
@@ -2761,13 +2745,9 @@ diff --git a/file.txt b/file.txt
       baseRef: "main",
       includeStructured: true,
     });
-    expect(agentResponseMocks.generateStructuredAgentResponseWithFallback).toHaveBeenCalledWith(
+    expect(structuredTextGeneration.generate).toHaveBeenCalledWith(
       expect.objectContaining({
-        persistSession: false,
-        agentConfigOverrides: expect.objectContaining({
-          title: "PR generator",
-          internal: true,
-        }),
+        schemaName: "PullRequest",
       }),
     );
     expect(checkoutGitMocks.createPullRequest).toHaveBeenCalledWith(
@@ -2854,14 +2834,9 @@ diff --git a/file.txt b/file.txt
     const schema = (call as { schema?: { safeParse?: (value: unknown) => { success: boolean } } })
       .schema;
 
-    expect(agentResponseMocks.generateStructuredAgentResponseWithFallback).toHaveBeenCalledTimes(1);
+    expect(structuredTextGeneration.generate).toHaveBeenCalledTimes(1);
     expect(call).toMatchObject({
       schemaName: "PullRequest",
-      persistSession: false,
-      agentConfigOverrides: {
-        title: "PR generator",
-        internal: true,
-      },
     });
     expect(schema?.safeParse?.({ title: "Update file", body: "Updates file." }).success).toBe(true);
     expect(schema?.safeParse?.({ title: "Update file" }).success).toBe(false);
@@ -2876,9 +2851,7 @@ diff --git a/file.txt b/file.txt
       }),
       resolveRepoRoot: vi.fn().mockResolvedValue(makeRoot()),
     };
-    agentResponseMocks.generateStructuredAgentResponseWithFallback.mockRejectedValue(
-      new StructuredAgentFallbackError([]),
-    );
+    structuredTextGeneration.generate.mockRejectedValue(new StructuredTextGenerationError());
     checkoutGitMocks.createPullRequest.mockResolvedValue({
       url: "https://github.com/getpaseo/paseo/pull/9",
       number: 9,

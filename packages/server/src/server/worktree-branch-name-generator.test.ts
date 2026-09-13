@@ -3,8 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, test, vi } from "vitest";
 
-import type { AgentManager } from "./agent/agent-manager.js";
-import type { StructuredAgentGenerationWithFallbackOptions } from "./agent/agent-response-loop.js";
+import type { StructuredTextGenerationRequest } from "./session/checkout/git-metadata-generator.js";
 import {
   attemptFirstAgentBranchAutoName,
   type AttemptFirstAgentBranchAutoNameResult,
@@ -53,12 +52,10 @@ function createLogger() {
 }
 
 function createStructuredGenerator(result: { title: string; branch: string }) {
-  const calls: StructuredAgentGenerationWithFallbackOptions<unknown>[] = [];
+  const calls: StructuredTextGenerationRequest<unknown>[] = [];
 
-  async function generateStructured<T>(
-    options: StructuredAgentGenerationWithFallbackOptions<T>,
-  ): Promise<T> {
-    calls.push(options as StructuredAgentGenerationWithFallbackOptions<unknown>);
+  async function generateStructured<T>(options: StructuredTextGenerationRequest<T>): Promise<T> {
+    calls.push(options as StructuredTextGenerationRequest<unknown>);
     return result as T;
   }
 
@@ -73,11 +70,10 @@ describe("generateBranchNameFromFirstAgentContext", () => {
     });
 
     const result = await generateBranchNameFromFirstAgentContext({
-      agentManager: {} as AgentManager,
       cwd: "/tmp/repo",
       firstAgentContext: { prompt: "Add a payments flow with Stripe checkout" },
       logger: createLogger(),
-      deps: { generateStructuredAgentResponseWithFallback: structured.generateStructured },
+      generation: { generate: structured.generateStructured },
     });
 
     expect(result).not.toBeNull();
@@ -95,11 +91,10 @@ describe("generateBranchNameFromFirstAgentContext", () => {
     });
 
     const result = await generateBranchNameFromFirstAgentContext({
-      agentManager: {} as AgentManager,
       cwd: "/tmp/repo",
       firstAgentContext: { prompt: "Fix the login flow" },
       logger: createLogger(),
-      deps: { generateStructuredAgentResponseWithFallback: structured.generateStructured },
+      generation: { generate: structured.generateStructured },
     });
 
     expect(result?.branch).toBe("fix-login-flow");
@@ -111,11 +106,6 @@ describe("generateBranchNameFromFirstAgentContext", () => {
     expect(firstCall).toMatchObject({
       cwd: "/tmp/repo",
       schemaName: "BranchName",
-      maxRetries: 2,
-      agentConfigOverrides: {
-        title: "Branch name generator",
-        internal: true,
-      },
     });
     expect(firstCall.prompt).toContain("Fix the login flow");
     expect(firstCall.prompt).toContain("<user-prompt>\nFix the login flow\n</user-prompt>");
@@ -129,11 +119,10 @@ describe("generateBranchNameFromFirstAgentContext", () => {
     });
 
     await generateBranchNameFromFirstAgentContext({
-      agentManager: {} as AgentManager,
       cwd: "/tmp/repo",
       firstAgentContext: { prompt: "/refactor-one-thing" },
       logger: createLogger(),
-      deps: { generateStructuredAgentResponseWithFallback: structured.generateStructured },
+      generation: { generate: structured.generateStructured },
     });
 
     const firstCall = structured.calls[0];
@@ -156,7 +145,6 @@ describe("generateBranchNameFromFirstAgentContext", () => {
     });
 
     const result = await generateBranchNameFromFirstAgentContext({
-      agentManager: {} as AgentManager,
       cwd: "/tmp/repo",
       firstAgentContext: {
         attachments: [
@@ -170,7 +158,7 @@ describe("generateBranchNameFromFirstAgentContext", () => {
         ],
       },
       logger: createLogger(),
-      deps: { generateStructuredAgentResponseWithFallback: structured.generateStructured },
+      generation: { generate: structured.generateStructured },
     });
 
     expect(result?.branch).toBe("review-flaky-checkout");
@@ -181,50 +169,75 @@ describe("generateBranchNameFromFirstAgentContext", () => {
     expect(firstCall.prompt).toContain("Review flaky checkout");
   });
 
-  test("uses the current selection as the final provider fallback", async () => {
-    const structured = createStructuredGenerator({
-      title: "Focused task",
-      branch: "focused-branch",
+  test("directory generation requests only title and ignores branch instructions", async () => {
+    const cwd = createTempDir("paseo-directory-title-");
+    writeConfig(cwd, {
+      metadataGeneration: {
+        title: { instructions: "Title in Spanish." },
+        branchName: { instructions: "BRANCH_INSTRUCTION_MUST_NOT_APPEAR" },
+      },
     });
-
+    const calls: StructuredTextGenerationRequest<unknown>[] = [];
     const result = await generateBranchNameFromFirstAgentContext({
-      agentManager: {} as AgentManager,
-      cwd: "/tmp/repo",
-      providerSnapshotManager: {
-        listProviders: vi.fn(async () => [
-          {
-            provider: "focused-provider",
-            status: "ready" as const,
-            enabled: true,
-            models: [
-              {
-                provider: "focused-provider",
-                id: "selected-model",
-                label: "Selected Model",
-                isDefault: true,
-              },
-            ],
-          },
-        ]),
+      cwd,
+      includeBranch: false,
+      workspaceGitService: {
+        resolveRepoRoot: async () => {
+          throw new Error("not a git repository");
+        },
       },
-      currentSelection: {
-        provider: "focused-provider",
-        model: "selected-model",
-        thinkingOptionId: "medium",
-      },
-      firstAgentContext: { prompt: "Fix the login flow" },
+      firstAgentContext: { prompt: "Fix login" },
       logger: createLogger(),
-      deps: { generateStructuredAgentResponseWithFallback: structured.generateStructured },
+      generation: {
+        generate: async <T>(request: StructuredTextGenerationRequest<T>) => {
+          calls.push(request);
+          return request.schema.parse({ title: "Arreglar inicio" });
+        },
+      },
     });
+    expect(result).toEqual({ title: "Arreglar inicio", branch: null });
+    expect(calls).toHaveLength(1);
+    expect(calls[0].prompt).toContain("Title in Spanish.");
+    expect(calls[0].prompt).not.toContain("BRANCH_INSTRUCTION_MUST_NOT_APPEAR");
+    expect(calls[0].prompt).not.toContain("Branch style:");
+  });
 
-    expect(result?.branch).toBe("focused-branch");
-    const firstCall = structured.calls[0];
-    if (!firstCall) {
-      throw new Error("expected structured generation call");
-    }
-    expect(firstCall.providers).toEqual([
-      { provider: "focused-provider", model: "selected-model", thinkingOptionId: "medium" },
-    ]);
+  test("bounds oversized project instructions and input while retaining the JSON contract", async () => {
+    const cwd = createTempDir("paseo-bounded-title-");
+    writeConfig(cwd, {
+      metadataGeneration: {
+        title: { instructions: "TITLE_STYLE " + "x".repeat(100_000) },
+        branchName: { instructions: "BRANCH_STYLE " + "y".repeat(100_000) },
+      },
+    });
+    const generate = vi.fn(async <T>(request: StructuredTextGenerationRequest<T>) => {
+      expect(request.prompt.length).toBeLessThanOrEqual(24_000);
+      expect(request.prompt).toContain("TITLE_STYLE");
+      expect(request.prompt).toContain("BRANCH_STYLE");
+      expect(request.prompt).toContain("Return JSON only");
+      return request.schema.parse({ title: "Fix login", branch: "fix-login" });
+    });
+    await generateBranchNameFromFirstAgentContext({
+      cwd,
+      firstAgentContext: { prompt: "Fix login " + "z".repeat(100_000) },
+      logger: createLogger(),
+      generation: { generate },
+    });
+    expect(generate).toHaveBeenCalledTimes(1);
+  });
+
+  test("failed completion reuses the first-line title fallback and leaves the branch unchanged", async () => {
+    const generate = vi.fn(async () => {
+      throw new Error("HTTP failed");
+    });
+    const result = await generateBranchNameFromFirstAgentContext({
+      cwd: "/tmp/repo",
+      firstAgentContext: { prompt: "\n  Fix   login flow\nIgnore this second line" },
+      logger: createLogger(),
+      generation: { generate },
+    });
+    expect(result).toEqual({ title: "Fix login flow", branch: null });
+    expect(generate).toHaveBeenCalledTimes(1);
   });
 
   test.each([
@@ -319,14 +332,13 @@ describe("generateBranchNameFromFirstAgentContext", () => {
       firstAgentContext: { prompt: "Fix the login flow" },
       generateBranchNameFromContext: ({ cwd, firstAgentContext }) =>
         generateBranchNameFromFirstAgentContext({
-          agentManager: {} as AgentManager,
           cwd,
           workspaceGitService: createNoopWorkspaceGitService({
             resolveRepoRoot: async () => repoRoot,
           }),
           firstAgentContext,
           logger: createLogger(),
-          deps: { generateStructuredAgentResponseWithFallback: structured.generateStructured },
+          generation: { generate: structured.generateStructured },
         }).then((r) => r?.branch ?? null),
       getCurrentBranch: async () => "dazzling-yak",
       renameCurrentBranch,
@@ -351,14 +363,13 @@ async function generateBranchPromptWithConfig(config: unknown): Promise<{ prompt
   });
 
   await generateBranchNameFromFirstAgentContext({
-    agentManager: {} as AgentManager,
     cwd: path.join(repoRoot, "nested"),
     workspaceGitService: createNoopWorkspaceGitService({
       resolveRepoRoot: async () => repoRoot,
     }),
     firstAgentContext: { prompt: "Fix the login flow" },
     logger: createLogger(),
-    deps: { generateStructuredAgentResponseWithFallback: structured.generateStructured },
+    generation: { generate: structured.generateStructured },
   });
 
   return {

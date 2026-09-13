@@ -1,3 +1,4 @@
+import { HttpStructuredTextGeneration } from "./session/checkout/http-structured-text-generation.js";
 import express from "express";
 import { createServer as createHTTPServer, type IncomingMessage, type ServerResponse } from "http";
 import { constants, existsSync, unlinkSync } from "fs";
@@ -435,6 +436,7 @@ export interface PaseoDaemonConfig {
   downloadTokenTtlMs?: number;
   agentProviderSettings?: AgentProviderRuntimeSettingsMap;
   providerCatalogRefreshTimeoutMs?: number;
+  inference?: PersistedConfig["inference"];
   metadataGeneration?: {
     providers?: Array<{
       provider: string;
@@ -1049,11 +1051,9 @@ export async function createPaseoDaemon(
     wsServer?.broadcast(wrapSessionMessage(message));
   };
   const workspaceAutoName = new WorkspaceAutoName({
-    agentManager,
+    generation: new HttpStructuredTextGeneration(config.inference),
     workspaceRegistry,
     workspaceGitService,
-    providerSnapshotManager,
-    readDaemonConfig: () => ({ metadataGeneration: daemonConfigStore.get().metadataGeneration }),
     gitMutation: createGitMutationService({
       workspaceGitService,
       logger,
@@ -1679,6 +1679,7 @@ export async function createPaseoDaemon(
               pluginRuntime,
               orchestrationSkills,
               workspaceLabelService,
+              new HttpStructuredTextGeneration(config.inference),
             );
             pluginRuntime.bindPaseoSessionHost(wsServer);
             await pluginRuntime.start();

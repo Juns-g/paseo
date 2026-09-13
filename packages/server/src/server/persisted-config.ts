@@ -18,6 +18,24 @@ import {
 } from "@getpaseo/protocol/messages";
 import { PaseoServicePortAllocationSchema } from "@getpaseo/protocol/paseo-config-schema";
 
+export const MetadataInferenceConfigSchema = z
+  .object({
+    provider: z.enum(["openai", "gemini"]),
+    endpoint: z.url().refine((value) => {
+      const url = new URL(value);
+      return (
+        ["http:", "https:"].includes(url.protocol) &&
+        !url.username &&
+        !url.password &&
+        !url.search &&
+        !url.hash
+      );
+    }, "Use an HTTP(S) base URL without credentials, query, or fragment"),
+    model: z.string().trim().min(1).max(256),
+    apiKey: z.string().trim().min(1),
+  })
+  .strict();
+
 export const LogLevelSchema = z.enum(["trace", "debug", "info", "warn", "error", "fatal"]);
 export const LogFormatSchema = z.enum(["pretty", "json"]);
 
@@ -309,6 +327,7 @@ export const PersistedConfigSchema = z
       .strict()
       .optional(),
 
+    inference: MetadataInferenceConfigSchema.optional(),
     providers: ProvidersSchema.optional(),
     pluginsEnabled: z.boolean().optional(),
     plugins: z.record(PluginIdSchema, PluginSourceSchema).optional(),

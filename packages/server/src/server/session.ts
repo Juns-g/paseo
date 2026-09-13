@@ -114,7 +114,6 @@ import {
 } from "./agent/timeline-projection.js";
 import { buildAgentForkContextAttachment } from "./agent/activity-curator.js";
 import { buildAgentPrompt } from "./agent/prompt-attachments.js";
-import type { StructuredGenerationDaemonConfig } from "./agent/structured-generation-providers.js";
 import {
   getAgentStreamEventTurnId,
   type AgentPersistenceHandle,
@@ -161,7 +160,7 @@ import {
   type WorkspaceGitObserverService,
 } from "./session/workspace-git-observer/workspace-git-observer-service.js";
 import {
-  createAgentStructuredTextGeneration,
+  type StructuredTextGeneration,
   createGitMetadataGenerator,
 } from "./session/checkout/git-metadata-generator.js";
 import { ScheduleSession } from "./session/schedule/schedule-session.js";
@@ -434,6 +433,7 @@ const nodeSessionFileSystem: SessionFileSystem = {
 type AgentMcpTransportFactory = () => Promise<unknown>;
 
 export interface SessionOptions {
+  structuredTextGeneration?: StructuredTextGeneration;
   clientId: string;
   permissions: readonly DaemonPermission[];
   appVersion?: string | null;
@@ -876,12 +876,7 @@ export class Session {
       checkoutDiffManager,
       gitMetadataGenerator: createGitMetadataGenerator({
         workspaceGitService: this.workspaceGitService,
-        generation: createAgentStructuredTextGeneration({
-          agentManager: this.agentManager,
-          providerSnapshotManager,
-          readDaemonConfig: () => this.readStructuredGenerationDaemonConfig(),
-          getFocusedSelection: (cwd) => this.getFocusedAgentSelectionForCwd(cwd),
-        }),
+        generation: options.structuredTextGeneration,
       }),
       paseoHome: this.paseoHome,
       worktreesRoot: this.worktreesRoot,
@@ -1344,37 +1339,6 @@ export class Session {
     appVisibilityChangedAt: Date;
   } | null {
     return this.clientActivity;
-  }
-
-  private getFocusedAgentSelectionForCwd(cwd: string):
-    | {
-        provider?: string | null;
-        model?: string | null;
-        thinkingOptionId?: string | null;
-      }
-    | undefined {
-    const focusedAgentId = this.clientActivity?.focusedAgentId;
-    if (!focusedAgentId) {
-      return undefined;
-    }
-
-    const agent = this.agentManager.getAgent(focusedAgentId);
-    if (!agent || agent.cwd !== cwd) {
-      return undefined;
-    }
-
-    return {
-      provider: agent.provider,
-      model: agent.runtimeInfo?.model ?? agent.config.model ?? null,
-      thinkingOptionId:
-        agent.runtimeInfo?.thinkingOptionId ?? agent.config.thinkingOptionId ?? null,
-    };
-  }
-
-  private readStructuredGenerationDaemonConfig(): StructuredGenerationDaemonConfig {
-    return {
-      metadataGeneration: this.daemonConfigStore.get().metadataGeneration,
-    };
   }
 
   public getRuntimeMetrics(): SessionRuntimeMetrics {
@@ -3558,14 +3522,11 @@ export class Session {
       createdAgentId = snapshot.id;
       await this.agentUpdates.forwardLiveAgent(snapshot);
       if (resolvedIntent.createdDirectoryWorkspace && trimmedPrompt) {
-        this.workspaceAutoName.scheduleForDirectory(
-          {
-            workspaceId: resolvedIntent.intent.workspaceId,
-            cwd: resolvedIntent.config.cwd,
-            firstAgentContext,
-          },
-          { currentSelection: this.getFocusedAgentSelectionForCwd(resolvedIntent.config.cwd) },
-        );
+        this.workspaceAutoName.scheduleForDirectory({
+          workspaceId: resolvedIntent.intent.workspaceId,
+          cwd: resolvedIntent.config.cwd,
+          firstAgentContext,
+        });
       }
       this.createAgentLifecycleDispatch.registerAutoArchiveIfRequested({
         autoArchive,
@@ -6026,14 +5987,11 @@ export class Session {
       });
     if (request.firstAgentContext) {
       const firstAgentContext = request.firstAgentContext;
-      this.workspaceAutoName.scheduleForDirectory(
-        {
-          workspaceId: workspace.workspaceId,
-          cwd: workspace.cwd,
-          firstAgentContext,
-        },
-        { currentSelection: this.getFocusedAgentSelectionForCwd(workspace.cwd) },
-      );
+      this.workspaceAutoName.scheduleForDirectory({
+        workspaceId: workspace.workspaceId,
+        cwd: workspace.cwd,
+        firstAgentContext,
+      });
     }
   }
 
@@ -6607,9 +6565,7 @@ export class Session {
           this.createPaseoWorktree(workflowInput, serviceOptions),
         warmWorkspaceGitData: (workspace) => this.warmWorkspaceGitDataForWorkspace(workspace),
         autoNameWorkspaceBranchForFirstAgent: (autoNameInput) =>
-          this.workspaceAutoName.scheduleForWorktree(autoNameInput, {
-            currentSelection: this.getFocusedAgentSelectionForCwd(autoNameInput.workspace.cwd),
-          }),
+          this.workspaceAutoName.scheduleForWorktree(autoNameInput),
         startWorkspaceSetup: (workspaceId, operation) =>
           this.workspaceSetupRuntime.start(workspaceId, operation),
         emitWorkspaceUpdateForWorkspaceId: (workspaceId) =>

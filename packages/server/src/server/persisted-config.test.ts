@@ -21,6 +21,35 @@ function modeOf(filePath: string): number {
   return statSync(filePath).mode & MODE_MASK;
 }
 
+describe("PersistedConfigSchema lightweight inference", () => {
+  const inference = {
+    provider: "openai",
+    endpoint: "https://api.example.com/v1",
+    model: "small-model",
+    apiKey: "explicit-test-key",
+  };
+
+  test.each(["openai", "gemini"])("accepts explicit %s configuration", (provider) => {
+    expect(
+      PersistedConfigSchema.parse({ inference: { ...inference, provider } }).inference,
+    ).toEqual({ ...inference, provider });
+  });
+
+  test.each([
+    { apiKey: "" },
+    { model: " " },
+    { provider: "codex" },
+    { endpoint: "file:///tmp/key" },
+    { endpoint: "https://user:secret@example.com/v1" },
+    { endpoint: "https://example.com/v1?key=secret" },
+    { endpoint: "https://example.com/v1#secret" },
+  ])("rejects incomplete or unsafe configuration %o", (overrides) => {
+    expect(
+      PersistedConfigSchema.safeParse({ inference: { ...inference, ...overrides } }).success,
+    ).toBe(false);
+  });
+});
+
 describe("PersistedConfigSchema daemon auth config", () => {
   test("accepts optional daemon password hash", () => {
     const hash = "$2b$12$OLxyuuP9uLK30Uzc4wQX0O6liuU/Q1t5P2b0Ebf36mULvpVK3DRZW";

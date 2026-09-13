@@ -1,7 +1,14 @@
 import pino from "pino";
-import { expect, test } from "vitest";
-import type { AgentManager } from "./agent/agent-manager.js";
-import type { ProviderSnapshotManager } from "./agent/provider-snapshot-manager.js";
+import { afterEach, expect, test, vi } from "vitest";
+import { execFileSync } from "node:child_process";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import {
+  writePaseoWorktreeMetadata,
+  writePaseoWorktreeFirstAgentBranchAutoNameMetadata,
+} from "../utils/worktree-metadata.js";
+import { createNoopWorkspaceGitService } from "./test-utils/workspace-git-service-stub.js";
 import { WorkspaceAutoName } from "./workspace-auto-name.js";
 import { createPersistedWorkspaceRecord, type WorkspaceRegistry } from "./workspace-registry.js";
 import type { WorkspaceGitService } from "./workspace-git-service.js";
@@ -36,11 +43,8 @@ test("auto-name preserves workspace archival that lands during its metadata writ
     },
   } satisfies Pick<WorkspaceRegistry, "update">;
   const autoName = new WorkspaceAutoName({
-    agentManager: {} as AgentManager,
     workspaceRegistry,
     workspaceGitService: {} as WorkspaceGitService,
-    providerSnapshotManager: {} as ProviderSnapshotManager,
-    readDaemonConfig: () => ({}),
     gitMutation: { notifyGitMutation: async () => {} },
     emitWorkspaceUpdateForCwd: async () => {},
     emitWorkspaceUpdateForWorkspaceId: async () => updateEmitted.resolve(),
@@ -63,4 +67,66 @@ test("auto-name preserves workspace archival that lands during its metadata writ
     title: "generated",
     archivedAt,
   });
+});
+
+const temporaryDirectories: string[] = [];
+afterEach(() => {
+  vi.useRealTimers();
+  for (const cwd of temporaryDirectories.splice(0)) rmSync(cwd, { recursive: true, force: true });
+});
+
+test("failed generation for a pending worktree is attempted only once", async () => {
+  const cwd = mkdtempSync(path.join(tmpdir(), "paseo-auto-name-once-"));
+  temporaryDirectories.push(cwd);
+  execFileSync("git", ["init", "--initial-branch=placeholder-branch", cwd], { stdio: "pipe" });
+  execFileSync(
+    "git",
+    [
+      "-c",
+      "user.name=Test",
+      "-c",
+      "user.email=test@example.com",
+      "-c",
+      "commit.gpgsign=false",
+      "commit",
+      "--allow-empty",
+      "-m",
+      "initial",
+    ],
+    { cwd, stdio: "pipe" },
+  );
+  writePaseoWorktreeMetadata(cwd, { baseRefName: "main" });
+  writePaseoWorktreeFirstAgentBranchAutoNameMetadata(cwd, {
+    placeholderBranchName: "placeholder-branch",
+  });
+  const workspace = createPersistedWorkspaceRecord({
+    workspaceId: "once",
+    projectId: "project",
+    cwd,
+    kind: "worktree",
+    displayName: "placeholder-branch",
+    branch: "placeholder-branch",
+    worktreeRoot: cwd,
+    createdAt: "2026-08-08T00:00:00.000Z",
+    updatedAt: "2026-08-08T00:00:00.000Z",
+  });
+  const generateWorkspaceName = vi.fn<
+    typeof import("./worktree-branch-name-generator.js").generateBranchNameFromFirstAgentContext
+  >(async () => null);
+  const autoName = new WorkspaceAutoName({
+    workspaceRegistry: { update: async (_id, updater) => updater(workspace) },
+    workspaceGitService: createNoopWorkspaceGitService(),
+    gitMutation: { notifyGitMutation: async () => {} },
+    emitWorkspaceUpdateForCwd: async () => {},
+    emitWorkspaceUpdateForWorkspaceId: async () => {},
+    logger: pino({ level: "silent" }),
+    generateWorkspaceName,
+  });
+  autoName.scheduleForWorktree({ workspace, firstAgentContext: { prompt: "Fix login" } });
+  await vi.waitFor(() => expect(generateWorkspaceName).toHaveBeenCalledTimes(1));
+  expect(generateWorkspaceName).toHaveBeenCalledTimes(1);
+  expect(generateWorkspaceName.mock.calls[0]?.[0]).toMatchObject({ includeBranch: true });
+  expect(execFileSync("git", ["branch", "--show-current"], { cwd, encoding: "utf8" }).trim()).toBe(
+    "placeholder-branch",
+  );
 });

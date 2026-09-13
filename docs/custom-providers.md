@@ -35,6 +35,7 @@ catalog probe. `PASEO_PROVIDER_REFRESH_TIMEOUT_MS` sets it when the config field
 
 ## Table of Contents
 
+- [Lightweight metadata generation](#lightweight-metadata-generation)
 - [Extending a built-in provider](#extending-a-built-in-provider)
 - [Z.AI (Zhipu) coding plan](#zai-zhipu-coding-plan)
 - [Alibaba Cloud (Qwen) coding plan](#alibaba-cloud-qwen-coding-plan)
@@ -46,6 +47,27 @@ catalog probe. `PASEO_PROVIDER_REFRESH_TIMEOUT_MS` sets it when the config field
 - [Provider override reference](#provider-override-reference)
 
 ---
+
+## Lightweight metadata generation
+
+Configure `inference` at the top level of the daemon's `config.json` to generate workspace titles, worktree branch names, commit messages, and pull-request text through a stateless HTTP endpoint:
+
+```json
+{
+  "inference": {
+    "provider": "openai",
+    "endpoint": "https://api.openai.com/v1",
+    "model": "YOUR_MODEL",
+    "apiKey": "YOUR_API_KEY"
+  }
+}
+```
+
+`endpoint` is the API base URL. For Gemini, set `provider` to `gemini` and use `https://generativelanguage.googleapis.com/v1beta`. Supply an explicit key; Paseo never reads agent CLI credential stores for metadata generation. This startup configuration requires a daemon restart after changes. Keys stay outside the client-visible mutable configuration.
+
+Each generation makes one request with a four-second deadline, including the response body. No agent session, tools, MCP servers, or workspace rules are loaded. Without `inference`, or after an HTTP, timeout, or JSON validation failure, local fallback applies: workspace titles use the first prompt line, pending worktree branches retain their valid placeholder, and Git text uses its built-in defaults. `agents.metadataGeneration.providers` does not select this backend.
+
+Keep project naming styles in `paseo.json` under `metadataGeneration.title.instructions` and `metadataGeneration.branchName.instructions`. Directory workspaces request only a title; pending Git worktrees request title and branch together. Prompts are bounded so large inputs or instructions cannot create an unbounded request.
 
 ## Extending a built-in provider
 

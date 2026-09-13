@@ -1,8 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  StructuredAgentFallbackError,
-  StructuredAgentResponseError,
-} from "../../agent/agent-response-loop.js";
+import { StructuredTextGenerationError } from "./http-structured-text-generation.js";
 import type { CheckoutDiffCompare, CheckoutDiffResult } from "../../../utils/checkout-git.js";
 import type { WorkspaceGitService } from "../../workspace-git-service.js";
 import {
@@ -70,17 +67,16 @@ describe("createGitMetadataGenerator", () => {
     expect(generateCalls[0]).toMatchObject({
       cwd: "/repo",
       schemaName: "CommitMessage",
-      agentTitle: "Commit generator",
     });
     expect(generateCalls[0].prompt).toContain("Write a concise git commit message");
     expect(generateCalls[0].prompt).toContain("M\tsrc/foo.ts\t(+3 -1)");
     expect(generateCalls[0].prompt).toContain("diff --git a/src/foo.ts");
   });
 
-  it("generateCommitMessage falls back to a default message when generation exhausts its providers", async () => {
+  it("generateCommitMessage falls back to a default message when HTTP generation fails", async () => {
     const { diffSource } = createDiffSource(DIFF_WITH_ONE_FILE);
     const { generation } = createGeneration(() => {
-      throw new StructuredAgentFallbackError([]);
+      throw new StructuredTextGenerationError();
     });
     const generator = createGitMetadataGenerator({ workspaceGitService: diffSource, generation });
 
@@ -90,10 +86,7 @@ describe("createGitMetadataGenerator", () => {
   it("generateCommitMessage falls back when the generated response cannot be validated", async () => {
     const { diffSource } = createDiffSource(DIFF_WITH_ONE_FILE);
     const { generation } = createGeneration(() => {
-      throw new StructuredAgentResponseError("invalid", {
-        lastResponse: "{}",
-        validationErrors: ["message: required"],
-      });
+      throw new StructuredTextGenerationError();
     });
     const generator = createGitMetadataGenerator({ workspaceGitService: diffSource, generation });
 
@@ -130,7 +123,6 @@ describe("createGitMetadataGenerator", () => {
     expect(generateCalls[0]).toMatchObject({
       cwd: "/repo",
       schemaName: "PullRequest",
-      agentTitle: "PR generator",
     });
     expect(generateCalls[0].prompt).toContain("Write a pull request title and body");
   });
@@ -138,7 +130,7 @@ describe("createGitMetadataGenerator", () => {
   it("generatePullRequestText falls back to default PR text when generation fails", async () => {
     const { diffSource } = createDiffSource(DIFF_WITH_ONE_FILE);
     const { generation } = createGeneration(() => {
-      throw new StructuredAgentFallbackError([]);
+      throw new StructuredTextGenerationError();
     });
     const generator = createGitMetadataGenerator({ workspaceGitService: diffSource, generation });
 
