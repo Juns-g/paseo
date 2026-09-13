@@ -39,6 +39,7 @@
 > 1. **轻量无状态 HTTP 标题与元数据生成**：将对话标题与 Git 分支命名彻底从重型 `AgentManager` 中解耦，直连极简 HTTP 补全（支持 OpenAI 兼容及 Gemini REST 协议）；修复原版在创建失败时重复触发请求导致 429 的 Bug，支持 4 秒硬超时与首行截断规则兜底（配置方式详见 [docs/custom-providers.md](docs/custom-providers.md#lightweight-metadata-generation)）。
 > 2. **分栏拖拽按帧合并防掉帧**：使用 `requestAnimationFrame` 合并高频鼠标事件，彻底解决左右拖拽分栏时内嵌终端/浏览器的粘滞掉帧手感。
 > 3. **Hermes 原生 Provider 品牌图标**：为 ACP 列表与会话标签栏注册原生 Hermes SVG 图标，自适应深浅色主题。
+4. **无图标项目会话首字与专属底色**：无自定义 Logo 的项目，侧边栏图标不再千篇一律显示单一仓库名首字，而是自动按当前会话标题提取首字（完整支持汉字与 Emoji），并按会话分配专属底色；有 Logo 的项目 100% 保持原有图标。
 >
 > **实验性独立分支（以 MR/PR 形式在远端单独留存）：**
 > - [`feat/intent-aware-image-previews`](https://github.com/Juns-g/paseo/tree/feat/intent-aware-image-previews)：区分 Agent 排错截图与成果图，长图自动折叠为紧凑横条，防止霸屏（独立分支备查，主干不打包）。
