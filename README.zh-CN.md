@@ -31,6 +31,24 @@
 
 <p align="center">Claude Code、Codex、Copilot、OpenCode 和 Pi agents 的统一界面。</p>
 
+> ### 🛠️ Juns's Custom Fork / 个人增强分支说明
+>
+> 本仓库为个人维护的 Paseo 增强分支（上游官方仓库：[getpaseo/paseo](https://github.com/getpaseo/paseo)，官方网站：[paseo.sh](https://paseo.sh)）。
+>
+> **本分支 (`main`) 专有改进：**
+> 1. **轻量无状态 HTTP 标题与元数据生成**：将对话标题与 Git 分支命名彻底从重型 `AgentManager` 中解耦，直连极简 HTTP 补全（支持 OpenAI 兼容及 Gemini REST 协议）；修复原版在创建失败时重复触发请求导致 429 的 Bug，支持 4 秒硬超时与首行截断规则兜底（配置方式详见 [docs/custom-providers.md](docs/custom-providers.md#lightweight-metadata-generation)）。
+> 2. **分栏拖拽按帧合并防掉帧**：使用 `requestAnimationFrame` 合并高频鼠标事件，彻底解决左右拖拽分栏时内嵌终端/浏览器的粘滞掉帧手感。
+> 3. **Hermes 原生 Provider 品牌图标**：为 ACP 列表与会话标签栏注册原生 Hermes SVG 图标，自适应深浅色主题。
+>
+> **实验性独立分支（以 MR/PR 形式在远端单独留存）：**
+> - [`feat/intent-aware-image-previews`](https://github.com/Juns-g/paseo/tree/feat/intent-aware-image-previews)：区分 Agent 排错截图与成果图，长图自动折叠为紧凑横条，防止霸屏（独立分支备查，主干不打包）。
+>
+> **本地使用指南（与官方命令保持一致）：**
+> - 本地桌面运行：`npm run dev:desktop`
+> - 本地后台服务运行：`npm run dev:server`
+> - 本地构建 macOS 专属 App：`npm run build:desktop`
+> - 官方原版命令与起步指南：请参阅下文 [快速开始](#快速开始) 或 [官方文档](https://paseo.sh/docs)。
+
 <p align="center">
   <img src="https://paseo.sh/hero-mockup.png" alt="Paseo app screenshot" width="100%">
 </p>
