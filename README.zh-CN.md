@@ -36,19 +36,40 @@
 > 本仓库为个人维护的 Paseo 增强分支（上游官方仓库：[getpaseo/paseo](https://github.com/getpaseo/paseo)，官方网站：[paseo.sh](https://paseo.sh)）。
 >
 > **本分支 (`main`) 专有改进：**
+>
 > 1. **轻量无状态 HTTP 标题与元数据生成**：将对话标题与 Git 分支命名彻底从重型 `AgentManager` 中解耦，直连极简 HTTP 补全（支持 OpenAI 兼容及 Gemini REST 协议）；修复原版在创建失败时重复触发请求导致 429 的 Bug，支持 4 秒硬超时与首行截断规则兜底（配置方式详见 [docs/custom-providers.md](docs/custom-providers.md#lightweight-metadata-generation)）。
-> 2. **分栏拖拽按帧合并防掉帧**：使用 `requestAnimationFrame` 合并高频鼠标事件，彻底解决左右拖拽分栏时内嵌终端/浏览器的粘滞掉帧手感。
+> 2. **分栏拖拽按帧合并防掉帧**：使用 `requestAnimationFrame` 合并高频鼠标事件，减少左右拖拽分栏时的重复渲染。
 > 3. **Hermes 原生 Provider 品牌图标**：为 ACP 列表与会话标签栏注册原生 Hermes SVG 图标，自适应深浅色主题。
-4. **无图标项目会话首字与专属底色**：无自定义 Logo 的项目，侧边栏图标不再千篇一律显示单一仓库名首字，而是自动按当前会话标题提取首字（完整支持汉字与 Emoji），并按会话分配专属底色；有 Logo 的项目 100% 保持原有图标。
+> 4. **无图标项目会话首字与专属底色**：无自定义 Logo 的项目，侧边栏图标不再千篇一律显示单一仓库名首字，而是自动按当前会话标题提取首字（完整支持汉字与 Emoji），并按会话分配专属底色；有 Logo 的项目 100% 保持原有图标。
 >
 > **实验性独立分支（以 MR/PR 形式在远端单独留存）：**
+>
 > - [`feat/intent-aware-image-previews`](https://github.com/Juns-g/paseo/tree/feat/intent-aware-image-previews)：区分 Agent 排错截图与成果图，长图自动折叠为紧凑横条，防止霸屏（独立分支备查，主干不打包）。
 >
 > **本地使用指南（与官方命令保持一致）：**
+>
 > - 本地桌面运行：`npm run dev:desktop`
 > - 本地后台服务运行：`npm run dev:server`
 > - 本地构建 macOS 专属 App：`npm run build:desktop`
 > - 官方原版命令与起步指南：请参阅下文 [快速开始](#快速开始) 或 [官方文档](https://paseo.sh/docs)。
+
+## 安装个人增强版
+
+仓库：[Juns-g/paseo](https://github.com/Juns-g/paseo)。2026-09-13 已合并官方 `main` 的 `d1b705a0c`（版本号 `0.8.0`），保留上述四项定制；该记录不是自动跟踪上游的承诺。图片预览实验分支不包含在内。
+
+可把下面的提示词交给本机编码助手：
+
+```text
+请帮我从 https://github.com/Juns-g/paseo 的 main 分支构建并安装 Paseo 个人增强版，保留轻量 HTTP 标题与元数据生成、分栏拖拽按帧合并、Hermes 主题图标，以及无 Logo 会话的首字与配色。
+
+先阅读仓库 README、AGENTS.md、docs/development.md 和 docs/custom-providers.md，确认我的操作系统、CPU 架构、Paseo 安装方式及当前任务状态。备份现有应用与配置，保留历史会话、已有 provider 配置和本地定制。
+
+使用仓库完整桌面构建流程，同时构建前端、后台和 CLI，不要手工混装不同版本的 app.asar 或仅覆盖 server 文件。按平台处理本地签名，先用独立 PASEO_HOME、回环地址和非正式端口验证，再替换安装；退出前确认没有任务会被误中断。
+
+轻量元数据使用我自己的 OpenAI 兼容或 Gemini API 配置。若无法从本机现有配置确定 endpoint、model 和 apiKey，再询问我；不要复制作者的服务地址或密钥，不要把密钥写入 Git。没有可用 API 时明确说明会使用规则兜底。
+
+验证应用页面、后台健康、已有 agent provider 的初始化以及一次真实标题生成；记录来源提交和验证边界，保留回滚路径。不要替我发布 release、推送仓库或启用公共访问。说明官方更新可能覆盖此定制版。
+```
 
 <p align="center">
   <img src="https://paseo.sh/hero-mockup.png" alt="Paseo app screenshot" width="100%">
