@@ -1,4 +1,7 @@
-import { createAgentRequestsStub } from "./test-utils/session-stubs.js";
+import {
+  createMessageReceiptsStub,
+  createTestCreationService,
+} from "./test-utils/session-stubs.js";
 import { execSync } from "child_process";
 import { existsSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
@@ -356,7 +359,8 @@ function createSessionForTest(options: SessionForTestOptions = {}): Session {
 
   const sessionOptions: SessionOptions = {
     structuredTextGeneration,
-    agentRequests: createAgentRequestsStub(),
+    messageReceipts: createMessageReceiptsStub(),
+    creationService: createTestCreationService(),
     clientId: options.clientId ?? "test-client",
     onMessage: (message) => messages.push(message),
     ...(options.targetedMessages
@@ -488,7 +492,7 @@ test("routes plugin requests and releases its owned catalog subscription on clea
       return request;
     },
     emit: () => {},
-    listPlugins: () => [plugin],
+    listPlugins: async () => [plugin],
     getLogs: () => [
       {
         sequence: 1,
@@ -2445,10 +2449,14 @@ describe("session checkout merge handling", () => {
       requestId: "request-merge-from-base-success",
     });
 
-    expect(checkoutGitMocks.mergeFromBase).toHaveBeenCalledWith("/tmp/request-worktree", {
-      baseRef: "main",
-      requireCleanTarget: true,
-    });
+    expect(checkoutGitMocks.mergeFromBase).toHaveBeenCalledWith(
+      "/tmp/request-worktree",
+      {
+        baseRef: "main",
+        requireCleanTarget: true,
+      },
+      { paseoHome: "/tmp/paseo-home", worktreesRoot: undefined },
+    );
     expect(workspaceGitService.getSnapshot).toHaveBeenCalledWith("/tmp/request-worktree", {
       force: true,
       reason: "merge-from-base",
@@ -2893,6 +2901,7 @@ diff --git a/file.txt b/file.txt
         base: "main",
       },
       expect.anything(),
+      { paseoHome: "/tmp/paseo-home", worktreesRoot: undefined },
     );
     expect(messages).toContainEqual({
       type: "checkout_pr_create_response",
@@ -3010,6 +3019,7 @@ diff --git a/file.txt b/file.txt
         base: "main",
       },
       expect.anything(),
+      { paseoHome: "/tmp/paseo-home", worktreesRoot: undefined },
     );
     expect(messages).toContainEqual({
       type: "checkout_pr_create_response",
