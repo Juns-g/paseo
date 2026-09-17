@@ -795,7 +795,9 @@ export function createViewedTimelineSync(ports: ViewedTimelineSyncPorts): Viewed
   };
 
   const publishVisibleMembership = () => {
-    commitDesiredMembership(normalizeAgentIds([...openAgentIds, ...visibleAgentIds()]));
+    // Restored tabs stay cold until viewed: fetching history starts a provider process.
+    const retained = desired.filter((id) => openAgentIds.includes(id));
+    commitDesiredMembership(normalizeAgentIds([...retained, ...visibleAgentIds()]));
   };
 
   return {

@@ -166,10 +166,12 @@ replica cache.
 
 The app chooses one delivery policy from `server_info.features.selectiveAgentTimeline`:
 
-- Selective daemons receive every open workspace chat plus any visible agent pane. Workspace layout
-  owns open-chat lifetime, independently of mounted or retained React views. Switching workspaces,
+- Selective daemons receive visible agent panes and previously viewed chats that remain open.
+  Restored tabs stay cold until first viewed: a timeline fetch also starts the provider process,
+  so eagerly fetching every persisted workspace can launch hundreds of idle providers at startup.
+  Workspace layout owns the lifetime after first view. Switching workspaces,
   evicting a retained view, and app backgrounding preserve that demand; closing the chat releases it.
-  Reconnect restores the open set and gives visible chats the first catch-up attempt. Hidden chats
+  Reconnect restores the viewed open set and gives visible chats the first catch-up attempt. Warm hidden chats
   follow when those attempts settle, including failures, so a failed visible chat does not starve
   background recovery. Split panes catch up together. Hidden chats update the replica; on web their
   retained presentation stays suspended until revealed, on native it keeps rendering. Revealing a
