@@ -90,7 +90,10 @@ describe("buildACPClientCapabilities", () => {
 
 interface ACPSessionInternals {
   sessionId: string | null;
-  connection: { prompt: (...args: unknown[]) => Promise<PromptResponse> };
+  connection: {
+    prompt: (...args: unknown[]) => Promise<PromptResponse>;
+    cancel?: (...args: unknown[]) => Promise<void>;
+  };
   activeForegroundTurnId: string | null;
   configOptions: SessionConfigOption[];
   translateSessionUpdate(update: SessionUpdate): AgentStreamEvent[];
@@ -2761,6 +2764,36 @@ describe("ACPAgentSession", () => {
     ]);
   });
 
+  test("interrupt waits for the ACP prompt to settle before allowing replacement", async () => {
+    const session = createSession();
+    let resolvePrompt!: (value: PromptResponse) => void;
+    const prompt = vi.fn(
+      () =>
+        new Promise<PromptResponse>((resolve) => {
+          resolvePrompt = resolve;
+        }),
+    );
+    const cancel = vi.fn(async () => {});
+    asInternals<ACPSessionInternals>(session).sessionId = "session-1";
+    asInternals<ACPSessionInternals>(session).connection = { prompt, cancel };
+    await session.startTurn("first");
+    let acknowledged = false;
+    const interrupted = session.interrupt().then(() => {
+      acknowledged = true;
+      return;
+    });
+    await cancel.mock.results[0].value;
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(acknowledged).toBe(false);
+    resolvePrompt({ stopReason: "cancelled" });
+    await interrupted;
+    expect(acknowledged).toBe(true);
+    await expect(session.startTurn("replacement")).resolves.toHaveProperty("turnId");
+    resolvePrompt({ stopReason: "end_turn" });
+    await Promise.resolve();
+  });
+
   test("startTurn returns before the ACP prompt settles and completes later via subscribers", async () => {
     const session = createSession();
     const events: Array<{ type: string; turnId?: string }> = [];
@@ -3841,6 +3874,46 @@ describe("ACP session/load invariant — cwd and mcpServers always passed", () =
       cwd: "/tmp/paseo-acp-test",
       mcpServers: [],
     });
+  });
+
+  test("keeps loaded history readable when a saved model is no longer available", async () => {
+    let session!: ACPAgentSession;
+    const loadSession = vi.fn(async () => {
+      await session.sessionUpdate({
+        sessionId: "session-1",
+        update: {
+          sessionUpdate: "agent_message_chunk",
+          messageId: "assistant-old",
+          content: { type: "text", text: "Old reply" },
+        } as SessionUpdate,
+      });
+      return {
+        sessionId: "session-1",
+        modes: null,
+        models: {
+          currentModelId: "current",
+          availableModels: [{ modelId: "current", name: "Current" }],
+        },
+        configOptions: [],
+      };
+    });
+    ({ session } = makeTestSession({
+      capabilities: { loadSession: true },
+      handle: { sessionId: "session-1", provider: "claude-acp" },
+      loadSession,
+    }));
+    asInternals<{ config: { model?: string } }>(session).config.model = "retired";
+
+    await expect(session.initializeResumedSession()).resolves.toBeUndefined();
+    const history: AgentStreamEvent[] = [];
+    for await (const event of session.streamHistory()) history.push(event);
+    expect(history).toEqual([
+      expect.objectContaining({
+        type: "timeline",
+        item: expect.objectContaining({ text: "Old reply" }),
+      }),
+    ]);
+    await expect(session.startTurn("new prompt")).rejects.toThrow("Saved model is unavailable");
   });
 
   test("preserves assistant message IDs from loadSession replay", async () => {
