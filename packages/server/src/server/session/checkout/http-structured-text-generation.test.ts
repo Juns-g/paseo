@@ -168,7 +168,7 @@ describe("HttpStructuredTextGeneration", () => {
   });
 
   it.each(["headers", "body"])(
-    "enforces the 4-second deadline while waiting for %s",
+    "enforces the 30-second deadline while waiting for %s",
     async (phase) => {
       vi.useFakeTimers();
       const pending = new Promise<never>(() => {});
@@ -180,7 +180,7 @@ describe("HttpStructuredTextGeneration", () => {
       vi.stubGlobal("fetch", fetch);
       const result = new HttpStructuredTextGeneration(config).generate(request);
       const rejection = expect(result).rejects.toBeInstanceOf(StructuredTextGenerationError);
-      await vi.advanceTimersByTimeAsync(4_000);
+      await vi.advanceTimersByTimeAsync(30_000);
       await rejection;
       expect(fetch.mock.calls[0]![1].signal.aborted).toBe(true);
       expect(fetch).toHaveBeenCalledTimes(1);

@@ -39,7 +39,7 @@ export class HttpStructuredTextGeneration implements StructuredTextGeneration {
       timer = setTimeout(() => {
         controller.abort();
         reject(new StructuredTextGenerationError());
-      }, 4_000);
+      }, 30_000);
     });
     try {
       return await Promise.race([this.complete(request, controller.signal), deadline]);

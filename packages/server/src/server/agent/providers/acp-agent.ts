@@ -1682,6 +1682,8 @@ export class ACPAgentSession implements AgentSession, ACPClient {
   private readonly extensionCommandsParser?: ACPExtensionCommandsParser;
   private currentTurnUsage: AgentUsage | undefined;
   private activeForegroundTurnId: string | null = null;
+  private activePrompt: Promise<void> | null = null;
+  private resumeConfigurationError: Error | null = null;
   private fallbackAssistantMessageId: string | null = null;
   private closed = false;
   private historyPending = false;
@@ -1796,7 +1798,30 @@ export class ACPAgentSession implements AgentSession, ACPClient {
         throw new Error(`${this.provider} does not support ACP session resume`);
       }
 
-      await this.applyConfiguredOverrides();
+      // History is already loaded; a stale saved setting should only block the next send.
+      try {
+        const modelId = this.config.model;
+        if (modelId && modelId !== this.currentModel) {
+          const selection = resolveACPModelSelection({
+            modelId,
+            availableModels: this.availableModels,
+            configOptions: this.configOptions,
+          });
+          const hasModelCatalog = selection.hasAvailableModels || Boolean(selection.configOption);
+          const isModelMatch = Boolean(selection.availableModel || selection.configChoice);
+          if (hasModelCatalog && !isModelMatch) {
+            throw new Error(`Saved model is unavailable: ${modelId}`);
+          }
+        }
+        await this.applyConfiguredOverrides();
+      } catch (error) {
+        this.resumeConfigurationError = new Error(
+          "历史已加载，但旧模型或配置不可用。请修改模型/推理档位并重载会话后再发送。 " +
+            summarizeACPRequestError(error).message,
+          { cause: error },
+        );
+        this.logger.warn({ err: error }, "Loaded history with unavailable saved configuration");
+      }
     } catch (error) {
       await this.closeAfterInitializationFailure(error);
     }
@@ -1844,6 +1869,9 @@ export class ACPAgentSession implements AgentSession, ACPClient {
     if (this.activeForegroundTurnId) {
       throw new Error("A foreground turn is already active");
     }
+    if (this.resumeConfigurationError) {
+      throw this.resumeConfigurationError;
+    }
 
     this.deliverTranslatedEvents(this.flushPendingUserMessage());
     const turnId = randomUUID();
@@ -1855,7 +1883,7 @@ export class ACPAgentSession implements AgentSession, ACPClient {
     this.pushEvent({ type: "turn_started", provider: this.provider, turnId });
     this.emitSubmittedUserMessage(prompt, messageId, turnId, options?.clientMessageId);
 
-    void this.connection
+    this.activePrompt = this.connection
       .prompt({
         sessionId: this.sessionId,
         messageId,
@@ -2403,7 +2431,10 @@ export class ACPAgentSession implements AgentSession, ACPClient {
     this.pendingPermissions.clear();
 
     if (this.activeForegroundTurnId) {
+      const activePrompt = this.activePrompt;
       await this.connection.cancel({ sessionId: this.sessionId });
+      // ACP cancel is a notification; only prompt settlement acknowledges the interrupt.
+      await activePrompt;
     }
   }
 

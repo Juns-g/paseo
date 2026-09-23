@@ -15,5 +15,5 @@ export function projectIconPlaceholderLabelFromDisplayName(displayName: string):
   }
 
   const segments = trimmedDisplayName.split("/").filter(Boolean);
-  return segments[segments.length - 1] || trimmedDisplayName;
+  return (segments[segments.length - 1] || trimmedDisplayName).replace(/^[\p{P}\s]+/u, "");
 }
