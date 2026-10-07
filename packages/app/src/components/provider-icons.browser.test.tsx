@@ -2,11 +2,16 @@ import React from "react";
 import { flushSync } from "react-dom";
 import { createRoot } from "react-dom/client";
 import { afterAll, afterEach, expect, it } from "vitest";
-import { getProviderIcon } from "./provider-icons";
+import { useProviderIcon } from "./provider-icons";
 
 const container = document.createElement("div");
 document.body.appendChild(container);
 const root = createRoot(container);
+
+function HermesIcon({ color }: { color: string }) {
+  const Icon = useProviderIcon("hermes");
+  return <Icon size={24} color={color} />;
+}
 
 afterEach(() => {
   flushSync(() => root.render(null));
@@ -21,8 +26,7 @@ it.each([
   ["#f5f5f5", "rgb(245, 245, 245)"],
   ["#171717", "rgb(23, 23, 23)"],
 ])("renders Hermes paths in theme color %s", (color, expectedFill) => {
-  const Icon = getProviderIcon("hermes");
-  flushSync(() => root.render(<Icon size={24} color={color} />));
+  flushSync(() => root.render(<HermesIcon color={color} />));
 
   const paths = [...container.querySelectorAll("svg path")];
   expect(paths).toHaveLength(3);
