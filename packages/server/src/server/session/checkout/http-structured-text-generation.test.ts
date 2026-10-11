@@ -143,6 +143,34 @@ describe("HttpStructuredTextGeneration", () => {
     });
   });
 
+  it("uses DeepSeek JSON mode with thinking disabled", async () => {
+    const fetch = vi
+      .fn()
+      .mockResolvedValue(
+        Response.json({ choices: [{ message: { content: '{"title":"DeepSeek title"}' } }] }),
+      );
+    vi.stubGlobal("fetch", fetch);
+    expect(
+      await new HttpStructuredTextGeneration({
+        ...config,
+        provider: "deepseek",
+        endpoint: "https://api.deepseek.com",
+        model: "deepseek-flash",
+      }).generate(request),
+    ).toEqual({ title: "DeepSeek title" });
+    const [url, init] = fetch.mock.calls[0]!;
+    expect(url).toBe("https://api.deepseek.com/chat/completions");
+    expect(init.headers.authorization).toBe("Bearer test-secret");
+    expect(JSON.parse(init.body)).toEqual({
+      model: "deepseek-flash",
+      messages: [{ role: "user", content: request.prompt }],
+      response_format: { type: "json_object" },
+      thinking: { type: "disabled" },
+      max_tokens: 1024,
+      stream: false,
+    });
+  });
+
   it("does not call any endpoint when unconfigured", async () => {
     const fetch = vi.fn();
     vi.stubGlobal("fetch", fetch);

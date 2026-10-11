@@ -37,7 +37,7 @@
 >
 > **本分支 (`main`) 专有改进：**
 >
-> 1. **轻量无状态 HTTP 标题与元数据生成**：将对话标题与 Git 分支命名彻底从重型 `AgentManager` 中解耦，直连极简 HTTP 补全（支持 OpenAI 兼容及 Gemini REST 协议）；修复原版在创建失败时重复触发请求导致 429 的 Bug，支持 4 秒硬超时与首行截断规则兜底（配置方式详见 [docs/custom-providers.md](docs/custom-providers.md#lightweight-metadata-generation)）。
+> 1. **轻量无状态 HTTP 标题与元数据生成**：将对话标题与 Git 分支命名彻底从重型 `AgentManager` 中解耦，直连极简 HTTP 补全（支持 OpenAI 兼容、Gemini REST 协议及 DeepSeek）；修复原版在创建失败时重复触发请求导致 429 的 Bug，支持 4 秒硬超时与首行截断规则兜底（配置方式详见 [docs/custom-providers.md](docs/custom-providers.md#lightweight-metadata-generation)）。
 > 2. **分栏拖拽按帧合并防掉帧**：使用 `requestAnimationFrame` 合并高频鼠标事件，减少左右拖拽分栏时的重复渲染。
 > 3. **Hermes 原生 Provider 品牌图标**：为 ACP 列表与会话标签栏注册原生 Hermes SVG 图标，自适应深浅色主题。
 > 4. **无图标项目会话首字与专属底色**：无自定义 Logo 的项目，侧边栏图标不再千篇一律显示单一仓库名首字，而是自动按当前会话标题提取首字（完整支持汉字与 Emoji），并按会话分配专属底色；有 Logo 的项目 100% 保持原有图标。
@@ -55,7 +55,7 @@
 
 ## 安装个人增强版
 
-仓库：[Juns-g/paseo](https://github.com/Juns-g/paseo)。2026-09-13 已合并官方 `main` 的 `d1b705a0c`（版本号 `0.8.0`），保留上述四项定制；该记录不是自动跟踪上游的承诺。图片预览实验分支不包含在内。
+仓库：[Juns-g/paseo](https://github.com/Juns-g/paseo)。2026-10-12 已合并官方 `main` 的 `4bd31e1a2`（含 v0.11.2 发布），保留上述专有定制与 DeepSeek 支持；该记录不是自动跟踪上游的承诺。图片预览实验分支不包含在内。
 
 可把下面的提示词交给本机编码助手：
 

@@ -30,7 +30,7 @@ describe("PersistedConfigSchema lightweight inference", () => {
     apiKey: "explicit-test-key",
   };
 
-  test.each(["openai", "gemini"])("accepts explicit %s configuration", (provider) => {
+  test.each(["openai", "gemini", "deepseek"])("accepts explicit %s configuration", (provider) => {
     expect(
       PersistedConfigSchema.parse({ inference: { ...inference, provider } }).inference,
     ).toEqual({ ...inference, provider });

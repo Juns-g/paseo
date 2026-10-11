@@ -78,7 +78,17 @@ export class HttpStructuredTextGeneration implements StructuredTextGeneration {
       body = {
         model: config.model,
         messages: [{ role: "user", content: prompt }],
-        response_format: { type: "json_schema", json_schema: { name: request.schemaName, schema } },
+        ...(config.provider === "deepseek"
+          ? {
+              response_format: { type: "json_object" },
+              thinking: { type: "disabled" },
+            }
+          : {
+              response_format: {
+                type: "json_schema",
+                json_schema: { name: request.schemaName, schema },
+              },
+            }),
         max_tokens: 1024,
         stream: false,
       };

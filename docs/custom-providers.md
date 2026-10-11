@@ -92,7 +92,20 @@ Configure `inference` at the top level of the daemon's `config.json` to generate
 }
 ```
 
-`endpoint` is the API base URL. For Gemini, set `provider` to `gemini` and use `https://generativelanguage.googleapis.com/v1beta`. Supply an explicit key; Paseo never reads agent CLI credential stores for metadata generation. This startup configuration requires a daemon restart after changes. Keys stay outside the client-visible mutable configuration.
+`endpoint` is the API base URL. For Gemini, set `provider` to `gemini` and use `https://generativelanguage.googleapis.com/v1beta`. For DeepSeek Flash, set `provider` to `deepseek`, use `https://api.deepseek.com`, and set `model` to `deepseek-flash`:
+
+```json
+{
+  "inference": {
+    "provider": "deepseek",
+    "endpoint": "https://api.deepseek.com",
+    "model": "deepseek-flash",
+    "apiKey": "YOUR_DEEPSEEK_API_KEY"
+  }
+}
+```
+
+DeepSeek's chat endpoint does not accept the `json_schema` response format used by the OpenAI path. Paseo uses `json_object` and disables thinking for this provider, then validates the returned JSON against the requested Zod schema. Supply an explicit key; Paseo never reads agent CLI credential stores for metadata generation. This startup configuration requires a daemon restart after changes. Keys stay outside the client-visible mutable configuration.
 
 Each generation makes one request with a four-second deadline, including the response body. No agent session, tools, MCP servers, or workspace rules are loaded. Without `inference`, or after an HTTP, timeout, or JSON validation failure, local fallback applies: workspace titles use the first prompt line, pending worktree branches retain their valid placeholder, and Git text uses its built-in defaults. `agents.metadataGeneration.providers` does not select this backend.
 
