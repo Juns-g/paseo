@@ -4711,6 +4711,8 @@ export class AgentManager {
       return;
     }
     this.runs.trackAutonomousRun(agent.id, eventTurnId ?? null);
+    // A new autonomous run must not inherit the previous run's unread completion.
+    agent.attention = { requiresAttention: false };
     if (eventTurnId) {
       this.openActiveTurn(agent, eventTurnId, new Date());
     }

@@ -307,7 +307,15 @@ export function buildACPClientCapabilities(
       ...override?.fs,
     },
   };
-  return meta && Object.keys(meta).length > 0 ? { ...capabilities, _meta: meta } : capabilities;
+  const mergedMeta = { ...override?._meta, ...meta };
+  const hermes = mergedMeta.hermes;
+  return {
+    ...capabilities,
+    _meta: {
+      ...mergedMeta,
+      hermes: { ...(hermes && typeof hermes === "object" ? hermes : {}), backgroundTurns: 1 },
+    },
+  };
 }
 
 // Suppress interactive auth side-effects (e.g. Gemini CLI opening a Google
@@ -1747,6 +1755,9 @@ export class ACPAgentSession implements AgentSession, ACPClient {
   private readonly extensionCommandsParser?: ACPExtensionCommandsParser;
   private currentTurnUsage: AgentUsage | undefined;
   private activeForegroundTurnId: string | null = null;
+  private backgroundTurnId: string | null = null;
+  private finishedBackgroundTurns = new Set<string>();
+  private backgroundTurnCompletion: { promise: Promise<void>; resolve: () => void } | null = null;
   private activePrompt: Promise<void> | null = null;
   private resumeConfigurationError: Error | null = null;
   private fallbackAssistantMessageId: string | null = null;
@@ -1850,6 +1861,9 @@ export class ACPAgentSession implements AgentSession, ACPClient {
             sessionId: handle.sessionId,
             cwd: this.config.cwd,
             mcpServers: this.acpMcpServers(),
+            ...(this.agentCapabilities?._meta?.hermes
+              ? { _meta: { hermes: { backgroundResume: this.resumePurpose !== "history" } } }
+              : {}),
           }),
         );
         this.deliverTranslatedEvents(this.flushPendingUserMessage());
@@ -1862,6 +1876,9 @@ export class ACPAgentSession implements AgentSession, ACPClient {
             sessionId: handle.sessionId,
             cwd: this.config.cwd,
             mcpServers: this.acpMcpServers(),
+            ...(this.agentCapabilities?._meta?.hermes
+              ? { _meta: { hermes: { backgroundResume: this.resumePurpose !== "history" } } }
+              : {}),
           }),
         );
         this.applySessionState(response);
@@ -2550,11 +2567,12 @@ export class ACPAgentSession implements AgentSession, ACPClient {
 
     this.cancelPendingPermissions();
 
-    if (this.activeForegroundTurnId) {
+    if (this.activeForegroundTurnId || this.backgroundTurnId) {
       const activePrompt = this.activePrompt;
+      const background = this.backgroundTurnCompletion?.promise;
       await this.connection.cancel({ sessionId: this.sessionId });
       // ACP cancel is a notification; only prompt settlement acknowledges the interrupt.
-      await activePrompt;
+      await Promise.all([activePrompt, background]);
     }
   }
 
@@ -2571,7 +2589,7 @@ export class ACPAgentSession implements AgentSession, ACPClient {
 
     if (this.connection && this.sessionId) {
       try {
-        if (this.activeForegroundTurnId) {
+        if (this.activeForegroundTurnId || this.backgroundTurnId) {
           await withTimeout(
             this.connection.cancel({ sessionId: this.sessionId }),
             ACP_CLOSE_REQUEST_TIMEOUT_MS,
@@ -2610,6 +2628,9 @@ export class ACPAgentSession implements AgentSession, ACPClient {
     this.connection = null;
     this.child = null;
     this.activeForegroundTurnId = null;
+    this.backgroundTurnCompletion?.resolve();
+    this.backgroundTurnCompletion = null;
+    this.backgroundTurnId = null;
   }
 
   async requestPermission(params: RequestPermissionRequest): Promise<RequestPermissionResponse> {
@@ -2644,7 +2665,7 @@ export class ACPAgentSession implements AgentSession, ACPClient {
         options: params.options,
         resolve,
         reject,
-        turnId: this.activeForegroundTurnId,
+        turnId: this.backgroundTurnId ?? this.activeForegroundTurnId,
       });
     });
 
@@ -2652,7 +2673,7 @@ export class ACPAgentSession implements AgentSession, ACPClient {
       type: "permission_requested",
       provider: this.provider,
       request,
-      turnId: this.activeForegroundTurnId ?? undefined,
+      turnId: this.backgroundTurnId ?? this.activeForegroundTurnId ?? undefined,
     });
     return promise;
   }
@@ -2717,12 +2738,68 @@ export class ACPAgentSession implements AgentSession, ACPClient {
       "provider.acp.extension_notification",
     );
 
+    if (method === "_hermes/background_turn") {
+      this.handleBackgroundTurn(params);
+      return;
+    }
+
     const parsedCommands = this.extensionCommandsParser?.(method, params);
     if (parsedCommands) {
       this.applyResolvedCommands(parsedCommands, {
         sessionId: typeof params.sessionId === "string" ? params.sessionId : undefined,
       });
     }
+  }
+
+  private handleBackgroundTurn(params: Record<string, unknown>): void {
+    const hermes = this.agentCapabilities?._meta?.hermes;
+    if (
+      !hermes ||
+      typeof hermes !== "object" ||
+      Reflect.get(hermes, "backgroundTurns") !== 1 ||
+      this.closed ||
+      this.replayingHistory ||
+      params.sessionId !== this.sessionId ||
+      typeof params.turnId !== "string" ||
+      !params.turnId.trim()
+    )
+      return;
+    const turnId = params.turnId;
+    if (params.status === "started") {
+      if (this.backgroundTurnId || this.finishedBackgroundTurns.has(turnId)) return;
+      this.backgroundTurnId = turnId;
+      let resolve!: () => void;
+      const promise = new Promise<void>((done) => {
+        resolve = done;
+      });
+      this.backgroundTurnCompletion = { promise, resolve };
+      this.fallbackAssistantMessageId = null;
+      this.pushEvent({ type: "turn_started", provider: this.provider, turnId });
+      return;
+    }
+    if (turnId !== this.backgroundTurnId) return;
+    if (params.status === "completed") {
+      this.pushEvent({ type: "turn_completed", provider: this.provider, turnId });
+    } else if (params.status === "cancelled") {
+      this.pushEvent({
+        type: "turn_canceled",
+        provider: this.provider,
+        turnId,
+        reason: "Interrupted",
+      });
+    } else if (params.status === "failed") {
+      this.pushEvent({
+        type: "turn_failed",
+        provider: this.provider,
+        turnId,
+        error: typeof params.error === "string" ? params.error : "Background continuation failed",
+      });
+    } else return;
+    this.finishedBackgroundTurns.add(turnId);
+    this.backgroundTurnCompletion?.resolve();
+    this.backgroundTurnCompletion = null;
+    this.backgroundTurnId = null;
+    this.fallbackAssistantMessageId = null;
   }
 
   // Cache an asynchronously-delivered slash-command batch and unblock any
@@ -2911,6 +2988,14 @@ export class ACPAgentSession implements AgentSession, ACPClient {
           error: `ACP agent exited unexpectedly (${code ?? "null"}${signal ? `, ${signal}` : ""})`,
           diagnostic: stderrChunks.join("").trim() || undefined,
           turnId: this.activeForegroundTurnId,
+        });
+      }
+      if (this.backgroundTurnId) {
+        this.handleBackgroundTurn({
+          sessionId: this.sessionId,
+          turnId: this.backgroundTurnId,
+          status: "failed",
+          error: "ACP agent exited during background continuation",
         });
       }
     });
@@ -3342,7 +3427,7 @@ export class ACPAgentSession implements AgentSession, ACPClient {
       type: "timeline",
       provider: this.provider,
       item,
-      turnId: this.activeForegroundTurnId ?? undefined,
+      turnId: this.backgroundTurnId ?? this.activeForegroundTurnId ?? undefined,
     };
   }
 
