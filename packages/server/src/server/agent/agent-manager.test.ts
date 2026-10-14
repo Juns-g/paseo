@@ -1221,6 +1221,40 @@ test("steers a tracked autonomous turn without creating a replacement run", asyn
   }
 });
 
+test("autonomous completion notifies again when the previous reply is still unread", async () => {
+  const session = new SteeringTestSession({ provider: "claude", cwd: process.cwd() });
+  const workdir = mkdtempSync(join(tmpdir(), "agent-manager-background-attention-"));
+  const client = new (class extends TestAgentClient {
+    override async createSession() {
+      return session;
+    }
+  })();
+  const attention = vi.fn();
+  const manager = new AgentManager({
+    clients: { claude: client },
+    logger,
+    onAgentAttention: attention,
+  });
+  let agentId: string | null = null;
+  try {
+    const agent = await manager.createAgent({ provider: "claude", cwd: workdir }, undefined, {
+      workspaceId: undefined,
+    });
+    agentId = agent.id;
+    for (const turnId of ["initial", "background"]) {
+      session.pushEvent({ type: "turn_started", provider: "claude", turnId });
+      await vi.waitFor(() => expect(manager.getAgent(agent.id)?.lifecycle).toBe("running"));
+      session.pushEvent({ type: "turn_completed", provider: "claude", turnId });
+      await vi.waitFor(() => expect(manager.getAgent(agent.id)?.lifecycle).toBe("idle"));
+      expect(manager.getAgent(agent.id)?.attention.requiresAttention).toBe(true);
+    }
+    expect(attention).toHaveBeenCalledTimes(2);
+  } finally {
+    if (agentId) await manager.closeAgent(agentId).catch(() => undefined);
+    rmSync(workdir, { recursive: true, force: true });
+  }
+});
+
 test("isolated rewind falls back from steering to the normal replacement path", async () => {
   const session = new SteeringTestSession({ provider: "claude", cwd: process.cwd() });
   session.steerResult = "unavailable";

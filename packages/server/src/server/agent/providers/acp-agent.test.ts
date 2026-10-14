@@ -71,6 +71,7 @@ describe("buildACPClientCapabilities", () => {
         writeTextFile: false,
       },
       terminal: true,
+      _meta: { hermes: { backgroundTurns: 1 } },
     });
   });
 
@@ -91,7 +92,7 @@ describe("buildACPClientCapabilities", () => {
         writeTextFile: false,
       },
       terminal: false,
-      _meta: { source: "provider" },
+      _meta: { source: "provider", hermes: { backgroundTurns: 1 } },
     });
   });
 });
