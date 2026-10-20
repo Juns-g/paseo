@@ -36,22 +36,27 @@ export async function buildMetadataPrompt(options: BuildMetadataPromptOptions): 
     renderStyleSection(section, overrides?.[section.configKey]?.instructions),
   );
   const head = [options.contract, ...styleBlocks, options.after].join("\n\n");
-  return options.trailing ? `${head}\n\n${options.trailing}` : head;
+  const prompt = options.trailing ? `${head}\n\n${options.trailing}` : head;
+  return prompt.slice(0, 24_000);
 }
 
 function renderStyleSection(section: MetadataStyleSection, override: string | undefined): string {
-  const body = isNonEmptyString(override) ? override.trim() : section.default;
+  const body = isNonEmptyString(override) ? override.trim().slice(0, 2_000) : section.default;
   return section.label ? `${section.label}:\n${body}` : body;
 }
 
 async function readProjectMetadataOverrides(
   options: Pick<BuildMetadataPromptOptions, "cwd" | "workspaceGitService">,
 ): Promise<PaseoMetadataGeneration | undefined> {
-  if (!options.workspaceGitService) {
-    return undefined;
+  let repoRoot = options.cwd;
+  if (options.workspaceGitService) {
+    try {
+      repoRoot = await options.workspaceGitService.resolveRepoRoot(options.cwd);
+    } catch {
+      // Non-git directory workspaces keep their naming instructions in cwd.
+    }
   }
   try {
-    const repoRoot = await options.workspaceGitService.resolveRepoRoot(options.cwd);
     const json = readPaseoConfigJson(repoRoot);
     return PaseoConfigSchema.parse(json).metadataGeneration;
   } catch {

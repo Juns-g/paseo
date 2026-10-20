@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  createElectronNodeEnv,
   createNodeEntrypointInvocation,
   type NodeEntrypointSpec,
 } from "./node-entrypoint-launcher";
@@ -10,6 +11,26 @@ const CLI_ENTRYPOINT: NodeEntrypointSpec = {
 };
 
 describe("node-entrypoint-launcher", () => {
+  it("uses inherited proxies while keeping local daemon connections direct", () => {
+    const baseEnv = { https_proxy: "http://127.0.0.1:7897" };
+    expect(createElectronNodeEnv(baseEnv)).toMatchObject({
+      https_proxy: baseEnv.https_proxy,
+      NODE_USE_ENV_PROXY: "1",
+      NO_PROXY: "localhost,127.0.0.1,::1",
+    });
+    expect(baseEnv).toEqual({ https_proxy: "http://127.0.0.1:7897" });
+  });
+
+  it("preserves explicit proxy opt-out and bypass settings", () => {
+    expect(
+      createElectronNodeEnv({ NODE_USE_ENV_PROXY: "0", NO_PROXY: ".example.test" }),
+    ).toMatchObject({ NODE_USE_ENV_PROXY: "0", NO_PROXY: ".example.test" });
+    expect(createElectronNodeEnv({ no_proxy: ".internal.test" })).toMatchObject({
+      no_proxy: ".internal.test",
+      NO_PROXY: ".internal.test",
+    });
+  });
+
   describe("createNodeEntrypointInvocation", () => {
     it("uses the packaged runner when the desktop app is packaged", () => {
       expect(
@@ -35,6 +56,8 @@ describe("node-entrypoint-launcher", () => {
         ],
         env: {
           PATH: "/usr/bin",
+          NODE_USE_ENV_PROXY: "1",
+          NO_PROXY: "localhost,127.0.0.1,::1",
           ELECTRON_RUN_AS_NODE: "1",
           PASEO_NODE_ENV: "production",
         },
@@ -57,6 +80,8 @@ describe("node-entrypoint-launcher", () => {
         args: ["--import", "tsx", "/tmp/paseo-cli.js", "ls"],
         env: {
           PATH: "/usr/bin",
+          NODE_USE_ENV_PROXY: "1",
+          NO_PROXY: "localhost,127.0.0.1,::1",
           ELECTRON_RUN_AS_NODE: "1",
           PASEO_NODE_ENV: "development",
         },
@@ -106,6 +131,8 @@ describe("node-entrypoint-launcher", () => {
         ],
         env: {
           PATH: "/usr/bin",
+          NODE_USE_ENV_PROXY: "1",
+          NO_PROXY: "localhost,127.0.0.1,::1",
           ELECTRON_RUN_AS_NODE: "1",
           PASEO_NODE_ENV: "production",
         },

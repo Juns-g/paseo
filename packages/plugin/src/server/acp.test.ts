@@ -10,6 +10,7 @@ import {
 import type { ProviderConnection, ProviderEvent, ProviderInput } from "./provider.js";
 import { afterEach, describe, expect, it } from "vitest";
 import { runAcpProvider, type AcpStreamMessage } from "./acp.js";
+import { AgentTimelineItemPayloadSchema } from "@getpaseo/protocol/messages";
 
 const temporaryDirectories: string[] = [];
 
@@ -225,6 +226,102 @@ lines.on("line", (line) => {
 });`;
 
 describe("runAcpProvider", () => {
+  it.each(["live", "history"] as const)(
+    "keeps failed tools with missing output readable in %s timelines",
+    async (source) => {
+      const updates = [
+        { sessionUpdate: "user_message_chunk", content: { type: "text", text: "Original " } },
+        { sessionUpdate: "user_message_chunk", content: { type: "text", text: "question" } },
+        {
+          sessionUpdate: "tool_call",
+          toolCallId: "failed-empty",
+          title: "Read",
+          status: "failed",
+          rawInput: { path: "example" },
+          rawOutput: null,
+        },
+        {
+          sessionUpdate: "tool_call",
+          toolCallId: "failed-detail",
+          title: "Read",
+          status: "failed",
+          rawOutput: { message: "Original failure" },
+        },
+        textChunk("Original final reply"),
+      ];
+      const harness = connectorHarness({
+        capabilities: { loadSession: true },
+        promptUpdates: () => updates,
+        handleRequest(instance, request) {
+          if (source !== "history" || request.method !== "session/load") return false;
+          for (const update of updates)
+            instance.notify("session/update", { sessionId: "connector-session", update });
+          instance.respond(request, { modes: null, configOptions: [] });
+          return true;
+        },
+      });
+      const registration = runAcpProvider({
+        id: "failed-tools",
+        label: "Failed tools",
+        connector: harness.connector,
+      });
+      const connection = await registration.connect({
+        versions: [1],
+        capabilities: ["prompt.message", "session.persistence"],
+      });
+      const events: ProviderEvent[] = [];
+      connection.onEvent((event) => events.push(event));
+      try {
+        const input = openInput();
+        if (source === "history") {
+          input.persistence = { version: 1, data: { sessionId: "connector-session" } };
+          input.history = "replay";
+        }
+        await connection.send(input);
+        await waitForEvent(events, (event) => event.type === "session.ready");
+        if (source === "live") {
+          await connection.send({
+            type: "session.prompt",
+            sessionId: "session-1",
+            prompt: {
+              clientMessageId: "new-turn",
+              delivery: "auto",
+              input: { type: "message", content: [{ type: "text", text: "test" }] },
+            },
+          });
+        }
+        await waitForEvent(
+          events,
+          (event) =>
+            event.type === "timeline.item" &&
+            event.item.type === "assistant_message" &&
+            event.item.text === "Original final reply",
+        );
+        const users = events.flatMap((event) =>
+          event.type === "timeline.item" && event.item.type === "user_message" ? [event.item] : [],
+        );
+        expect(users.at(-1)?.text).toBe(source === "history" ? "Original question" : "test");
+        const tools = events.flatMap((event) =>
+          event.type === "timeline.item" && event.item.type === "tool_call" ? [event.item] : [],
+        );
+        expect(tools).toHaveLength(2);
+        expect(tools[0]).toMatchObject({
+          status: "failed",
+          error: { message: "Tool failed; the provider did not supply error details." },
+          detail: { type: "unknown", input: { path: "example" }, output: null },
+        });
+        expect(tools[1]).toMatchObject({
+          status: "failed",
+          error: { message: "Original failure" },
+        });
+        for (const item of tools)
+          expect(AgentTimelineItemPayloadSchema.safeParse(item).success).toBe(true);
+      } finally {
+        await connection.close();
+      }
+    },
+  );
+
   it("spawns the daemon-resolved launch for probes, catalogues, listing, and sessions", async () => {
     const executable = await fakeAcp(`
 if (process.env.LAUNCH_TOKEN !== "resolved" || process.env.CLAUDECODE || process.env.PASEO_NODE_ENV) process.exit(1);

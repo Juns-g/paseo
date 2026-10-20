@@ -898,3 +898,25 @@ describe.skipIf(process.platform === "win32")(
     });
   },
 );
+
+describe("retired fork HTTP metadata config", () => {
+  test("discards only inference while preserving native metadata providers", () => {
+    const home = createTempHome();
+    const metadataGeneration = { providers: [{ provider: "omp-metadata", model: "example" }] };
+    try {
+      writeFileSync(
+        path.join(home, "config.json"),
+        JSON.stringify({
+          version: 1,
+          inference: { provider: "obsolete", apiKey: "synthetic" },
+          agents: { metadataGeneration },
+        }),
+      );
+      const config = loadPersistedConfig(home);
+      expect(config.agents?.metadataGeneration).toEqual(metadataGeneration);
+      expect(config).not.toHaveProperty("inference");
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+});

@@ -1,6 +1,7 @@
 import { constants, promises as fs, type BigIntStats, type Stats } from "fs";
 import type { FileHandle } from "fs/promises";
 import path from "path";
+import { userInfo } from "os";
 import { randomUUID } from "crypto";
 import { expandUserPath, resolvePathFromBase } from "../path-utils.js";
 import { runGitCommand } from "../../utils/run-git-command.js";
@@ -144,7 +145,7 @@ export async function listDirectoryEntries({
   root,
   relativePath = ".",
 }: ListDirectoryParams): Promise<FileExplorerDirectory> {
-  const directoryPath = await resolveScopedPath({ root, relativePath });
+  const directoryPath = await resolveScopedPath({ root, relativePath }, true);
   const stats = await fs.stat(directoryPath.resolvedPath);
 
   if (!stats.isDirectory()) {
@@ -237,7 +238,7 @@ export async function readExplorerFileBytes({
   root,
   relativePath,
 }: ReadFileParams): Promise<FileExplorerFileBytes> {
-  const filePath = await resolveScopedPath({ root, relativePath });
+  const filePath = await resolveScopedPath({ root, relativePath }, true);
   const handle = await openFileForRead(filePath.resolvedPath);
 
   try {
@@ -292,7 +293,7 @@ export async function streamExplorerFile(
   { root, relativePath }: ReadFileParams,
   consume: (file: FileExplorerFileStream) => Promise<void>,
 ): Promise<void> {
-  const filePath = await resolveScopedPath({ root, relativePath });
+  const filePath = await resolveScopedPath({ root, relativePath }, true);
   const handle = await openFileForRead(filePath.resolvedPath);
 
   try {
@@ -397,7 +398,7 @@ export async function getExplorerFileVersion({
 }: ReadFileParams): Promise<ExplorerFileVersion> {
   const cwd = expandUserPath(root);
   try {
-    const filePath = await resolveScopedPath({ root, relativePath });
+    const filePath = await resolveScopedPath({ root, relativePath }, true);
     const stats = await fs.stat(filePath.resolvedPath, { bigint: true });
     if (!stats.isFile()) {
       return { status: "error", cwd, path: relativePath, error: "Requested path is not a file" };
@@ -538,7 +539,7 @@ export async function getDownloadableFileInfo({ root, relativePath }: ReadFilePa
   mimeType: string;
   size: number;
 }> {
-  const filePath = await resolveScopedPath({ root, relativePath });
+  const filePath = await resolveScopedPath({ root, relativePath }, true);
   const handle = await openFileForRead(filePath.resolvedPath);
 
   try {
@@ -805,16 +806,51 @@ async function isCaseOnlyRename(
   return isSameEntry && source.requestedPath.toLowerCase() === targetPath.toLowerCase();
 }
 
-async function resolveScopedPath({
-  root,
-  relativePath = ".",
-}: ScopedPathParams): Promise<ScopedPath> {
+async function relocatedImportedAsset(candidate: string): Promise<string> {
+  try {
+    await fs.stat(candidate);
+    return candidate;
+  } catch (error) {
+    if (!isMissingEntryError(error)) throw error;
+  }
+  const home = userInfo().homedir;
+  const roots = [
+    path.join(home, ".hermes/assets/legacy-paths"),
+    path.join(home, ".paseo/attachments/legacy-paths"),
+  ];
+  try {
+    const mappings = JSON.parse(await fs.readFile(path.join(roots[1], "relocations.json"), "utf8"));
+    const target = mappings[candidate];
+    if (typeof target !== "string") return candidate;
+    const resolved = await fs.realpath(target);
+    for (const root of roots) {
+      const relative = path.relative(await fs.realpath(root), resolved);
+      if (
+        relative === "" ||
+        (relative !== ".." && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative))
+      )
+        return resolved;
+    }
+  } catch {
+    /* Missing or invalid import metadata cannot grant a new read. */
+  }
+  return candidate;
+}
+
+async function resolveScopedPath(
+  { root, relativePath = "." }: ScopedPathParams,
+  importedRead = false,
+): Promise<ScopedPath> {
   const workspacePath = expandUserPath(root);
   const requestedPath = resolvePathFromBase(workspacePath, relativePath);
   assertWithinWorkspace(workspacePath, requestedPath);
-  const canonicalRoot = await fs.realpath(workspacePath);
+  const canonicalRoot = await fs.realpath(
+    importedRead ? await relocatedImportedAsset(workspacePath) : workspacePath,
+  );
   try {
-    const canonicalPath = await fs.realpath(requestedPath);
+    const canonicalPath = await fs.realpath(
+      importedRead ? await relocatedImportedAsset(requestedPath) : requestedPath,
+    );
     assertWithinWorkspace(canonicalRoot, canonicalPath);
     return { requestedPath, resolvedPath: canonicalPath };
   } catch (error) {

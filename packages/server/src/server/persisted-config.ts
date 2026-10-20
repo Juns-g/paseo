@@ -400,6 +400,9 @@ function stripRemovedConfigFields(parsed: unknown): unknown {
   }
 
   const root = { ...(parsed as Record<string, unknown>) };
+  // COMPAT(forkHttpMetadata): added 2026-10-20, remove after 2027-04-20.
+  // Native metadata providers replaced this fork-only block.
+  delete root.inference;
   const providers = root.providers;
   if (!providers || typeof providers !== "object" || Array.isArray(providers)) {
     return root;

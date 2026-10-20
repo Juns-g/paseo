@@ -69,28 +69,31 @@ describe("GenericACPAgentClient archived history", () => {
     });
   });
 
-  test("releases the provider process once an archived session's history is replayed", async () => {
-    await withFakeACPAgent(async ({ command, removedCwd, pidPath }) => {
-      const client = new GenericACPAgentClient({ logger: createTestLogger(), command });
+  test.each([null, "retired"])(
+    "releases the history provider process with saved model %s",
+    async (model) => {
+      await withFakeACPAgent(async ({ command, removedCwd, pidPath }) => {
+        const client = new GenericACPAgentClient({ logger: createTestLogger(), command });
 
-      const session = await client.resumeSession(
-        { provider: "acp", sessionId: "archived-session", metadata: { cwd: removedCwd } },
-        undefined,
-        undefined,
-        { purpose: "history" },
-      );
-      try {
-        const pid = Number(await readFile(pidPath, "utf8"));
-        expect(isProcessAlive(pid)).toBe(false);
-        expect(await collectTimelineText(session.streamHistory())).toEqual([
-          "user_message:What is in the README?",
-          "assistant_message:It describes the project.",
-        ]);
-      } finally {
-        await session.close();
-      }
-    });
-  });
+        const session = await client.resumeSession(
+          { provider: "acp", sessionId: "archived-session", metadata: { cwd: removedCwd } },
+          { model },
+          undefined,
+          { purpose: "history" },
+        );
+        try {
+          const pid = Number(await readFile(pidPath, "utf8"));
+          expect(isProcessAlive(pid)).toBe(false);
+          expect(await collectTimelineText(session.streamHistory())).toEqual([
+            "user_message:What is in the README?",
+            "assistant_message:It describes the project.",
+          ]);
+        } finally {
+          await session.close();
+        }
+      });
+    },
+  );
 
   test("keeps the provider process for an interactive resume", async () => {
     await withFakeACPAgent(async ({ command, removedCwd, pidPath }) => {
@@ -202,7 +205,12 @@ rl.on("line", (line) => {
     fs.writeFileSync(loadRequestsPath, JSON.stringify(loadRequests));
     replay(sessionId, "user_message_chunk", "What is in the README?");
     replay(sessionId, "agent_message_chunk", "It describes the project.");
-    write({ id: message.id, result: {} });
+    write({ id: message.id, result: {
+      models: {
+        currentModelId: "current",
+        availableModels: [{ modelId: "current", name: "Current" }],
+      },
+    } });
     return;
   }
 

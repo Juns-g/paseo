@@ -29,6 +29,9 @@ export function createElectronNodeEnv(
 ): NodeJS.ProcessEnv {
   return {
     ...baseEnv,
+    // Node fetch does not use the login shell's proxies unless explicitly enabled.
+    NODE_USE_ENV_PROXY: baseEnv.NODE_USE_ENV_PROXY ?? "1",
+    NO_PROXY: baseEnv.NO_PROXY ?? baseEnv.no_proxy ?? "localhost,127.0.0.1,::1",
     ELECTRON_RUN_AS_NODE: "1",
     [PASEO_NODE_ENV]: options?.isPackaged === true ? "production" : "development",
   };

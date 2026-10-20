@@ -139,8 +139,14 @@ export const SidebarWorkspaceRowContent = memo(function SidebarWorkspaceRowConte
         {leadingProjectName ? (
           <ProjectStatusIndicator
             iconDataUri={leadingProjectIconDataUri}
-            displayName={leadingProjectName}
-            projectViewKey={workspace.projectViewKey}
+            displayName={
+              leadingProjectIconDataUri ? leadingProjectName : workspaceLabel || leadingProjectName
+            }
+            projectViewKey={
+              leadingProjectIconDataUri
+                ? workspace.projectViewKey
+                : workspace.workspaceKey || workspace.projectViewKey
+            }
             statusBucket={workspace.statusBucket}
             backdrop={backdrop}
             loading={isLoading}

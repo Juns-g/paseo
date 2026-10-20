@@ -31,6 +31,30 @@
 
 <p align="center">One interface for Claude Code, Codex, Copilot, OpenCode, Pi, Antigravity, and Muse Code agents.</p>
 
+> ### 🛠️ Juns's Custom Fork / 个人增强分支说明
+>
+> 本仓库为个人维护的 Paseo 增强分支（上游官方仓库：[getpaseo/paseo](https://github.com/getpaseo/paseo)，官方网站：[paseo.sh](https://paseo.sh)；本分支基于 2026-10-20 确认的官方 `main` 提交 `adf27de7d`，并保留必要的个人定制）。
+>
+> **个人定制与采用的官方能力：**
+>
+> 1. **官方元数据生成**：使用官方 structured-agent 管线及隔离的 `omp-metadata` 配置；已退休 fork 专用 HTTP 实现。
+> 2. **分栏拖拽按帧合并防掉帧**：使用 `requestAnimationFrame` 合并高频鼠标事件，减少左右拖拽分栏时的重复渲染。
+> 3. **Hermes 图标**：普通内置图标采用官方实现；外置 Bot provider 继续保留自己的图标注册。
+> 4. **无图标项目会话首字与专属底色**：无自定义 Logo 的项目，侧边栏图标不再千篇一律显示单一仓库名首字，而是自动按当前会话标题提取首字（完整支持汉字与 Emoji），并按会话分配专属底色；有 Logo 的项目 100% 保持原有图标。
+> 5. **旧会话恢复与额度查询**：旧模型失效时仍可读取历史，恢复会话时尊重手工配置的模型；历史只读加载后释放 ACP 进程。Desktop 启动的 Node 子进程使用已有环境代理，解决直连受限时额度请求超时的问题。
+> 6. **Hermes 后台自动续接**：接收协商后的后台 turn 生命周期，使状态、停止和每轮完成提醒准确。需配合支持 `hermes.backgroundTurns: 1` 的 Hermes ACP；本机 Hermes 补丁独立维护，不随 Paseo 安装包分发。
+>
+> **实验性独立分支（以 MR/PR 形式在远端单独留存）：**
+>
+> - [`feat/intent-aware-image-previews`](https://github.com/Juns-g/paseo/tree/feat/intent-aware-image-previews)：区分 Agent 排错截图与成果图，长图自动折叠为紧凑横条，防止霸屏（独立分支备查，主干不打包）。
+>
+> **本地使用指南（与官方命令保持一致）：**
+>
+> - 本地桌面运行：`npm run dev:desktop`
+> - 本地后台服务运行：`npm run dev:server`
+> - 本地构建 macOS 专属 App：`npm run build:desktop`
+> - 官方原版命令与起步指南：请参阅下文 [Getting Started](#getting-started) 或 [官方文档](https://paseo.sh/docs)。
+
 <p align="center">
   <img src="https://paseo.sh/hero-mockup.png" alt="Paseo app screenshot" width="100%">
 </p>

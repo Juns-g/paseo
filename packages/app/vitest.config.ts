@@ -76,6 +76,20 @@ export default defineConfig({
       },
       {
         extends: true,
+        optimizeDeps: {
+          esbuildOptions: { resolveExtensions: [".web.js", ".js", ".ts", ".tsx", ".json"] },
+        },
+        resolve: {
+          alias: [
+            {
+              find: /^react-native-svg$/,
+              replacement: path.resolve(
+                rootNodeModules,
+                "react-native-svg/lib/module/ReactNativeSVG.web.js",
+              ),
+            },
+          ],
+        },
         test: {
           name: "browser",
           fileParallelism: false,

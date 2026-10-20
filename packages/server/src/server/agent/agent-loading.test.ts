@@ -86,8 +86,27 @@ test("resuming a stored agent keeps its unread flag and its last-activity time",
   const root = await mkdtemp(path.join(tmpdir(), "agent-loading-resume-"));
   const logger = createTestLogger();
   const storage = new AgentStorage(path.join(root, "agents"), logger);
+  const clients = createTestAgentClients();
+  const client = clients.codex;
+  if (!client) throw new Error("expected Codex test client");
+  const resumeSession = client.resumeSession.bind(client);
+  client.resumeSession = async (...args) => {
+    const session = await resumeSession(...args);
+    const subscribe = session.subscribe.bind(session);
+    session.subscribe = (callback) => {
+      const unsubscribe = subscribe(callback);
+      // ACP announces the existing thread immediately when the manager subscribes.
+      callback({
+        type: "thread_started",
+        provider: session.provider,
+        sessionId: args[0].sessionId,
+      });
+      return unsubscribe;
+    };
+    return session;
+  };
   const manager = new AgentManager({
-    clients: createTestAgentClients(),
+    clients,
     registry: storage,
     logger,
   });
@@ -134,6 +153,22 @@ test("resuming a stored agent keeps its unread flag and its last-activity time",
     expect(resumed?.lastActivityAt).toBe(markedUnread);
     expect(manager.getAgent(agentId)?.attention.requiresAttention).toBe(true);
     expect(manager.getAgent(agentId)?.updatedAt.toISOString()).toBe(markedUnread);
+
+    await manager.hydrateTimelineFromProvider(agentId, { force: true, broadcast: true });
+    await manager.flush();
+    await storage.flush();
+    expect(manager.getAgent(agentId)?.updatedAt.toISOString()).toBe(markedUnread);
+    expect((await storage.get(agentId))?.updatedAt).toBe(markedUnread);
+
+    await startAgentRun(manager, agentId, "new activity", logger);
+    await manager.flush();
+    await storage.flush();
+    expect(manager.getAgent(agentId)?.updatedAt.getTime()).toBeGreaterThan(
+      Date.parse(markedUnread),
+    );
+    expect(Date.parse((await storage.get(agentId))!.updatedAt)).toBeGreaterThan(
+      Date.parse(markedUnread),
+    );
   } finally {
     await manager.closeAgent(agentId).catch(() => undefined);
     await manager.flush().catch(() => undefined);

@@ -64,6 +64,7 @@ per-agent examples and provider-specific keys.
 
 ## Table of Contents
 
+- [Lightweight metadata generation](#lightweight-metadata-generation)
 - [Extending a built-in provider](#extending-a-built-in-provider)
 - [Z.AI (Zhipu) coding plan](#zai-zhipu-coding-plan)
 - [Alibaba Cloud (Qwen) coding plan](#alibaba-cloud-qwen-coding-plan)
@@ -75,6 +76,12 @@ per-agent examples and provider-specific keys.
 - [Provider override reference](#provider-override-reference)
 
 ---
+
+## Lightweight metadata generation
+
+Workspace titles, branch names, commit messages, and pull-request text use the native provider structured-response pipeline. Configure the ordered candidates with `agents.metadataGeneration.providers`; see [Metadata generation](../public-docs/metadata-generation.md). The former fork-specific `inference` HTTP helper is no longer used for metadata.
+
+Provider-specific launch environment belongs in `agents.providers.<id>.env`, so proxy settings can be scoped to a metadata provider without changing the daemon or Relay environment.
 
 ## Extending a built-in provider
 

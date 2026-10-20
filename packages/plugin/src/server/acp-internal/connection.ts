@@ -371,6 +371,7 @@ class AcpRuntime {
   private modes: NewSessionResponse["modes"] = null;
   private commandWaiter: (() => void) | null = null;
   private messageSequence = 0;
+  private replayingHistory = false;
   /**
    * Fallback ids for streamed chunks that carry no `messageId`, one per
    * chunk kind. Consecutive chunks of a kind continue the same timeline
@@ -378,7 +379,7 @@ class AcpRuntime {
    * or a turn boundary ends it (#4699).
    */
   private readonly fallbackChunkIds = new Map<
-    "agent_message_chunk" | "agent_thought_chunk",
+    "agent_message_chunk" | "agent_thought_chunk" | "user_message_chunk",
     string
   >();
   private closing = false;
@@ -499,15 +500,21 @@ class AcpRuntime {
     };
     let response: Pick<NewSessionResponse, "modes" | "configOptions">;
     if (nativeSessionId) {
-      response = await this.call(
-        this.connection.loadSession({
-          sessionId: nativeSessionId,
-          cwd: input.config.cwd,
-          mcpServers,
-          _meta: metadata,
-        }),
-      );
       this.nativeSessionId = nativeSessionId;
+      this.replayingHistory = input.history === "replay";
+      try {
+        response = await this.call(
+          this.connection.loadSession({
+            sessionId: nativeSessionId,
+            cwd: input.config.cwd,
+            mcpServers,
+            _meta: metadata,
+          }),
+        );
+        await this.drainNotifications();
+      } finally {
+        this.replayingHistory = false;
+      }
     } else {
       const newSession = await this.call(
         this.connection.newSession({
@@ -907,26 +914,29 @@ class AcpRuntime {
       update.sessionUpdate === "agent_thought_chunk" ||
       update.sessionUpdate === "user_message_chunk"
     ) {
-      if (update.sessionUpdate === "user_message_chunk") {
+      // Live user echoes are already recorded by admitPrompt; restored user
+      // messages arrive only in the provider's history replay.
+      if (update.sessionUpdate === "user_message_chunk" && !this.replayingHistory) {
         this.fallbackChunkIds.clear();
         return;
       }
-      // A chunk of one kind ends the other kind's item, whatever its content
-      // or id: reasoning, then text, then reasoning again are three items.
-      this.fallbackChunkIds.delete(
-        update.sessionUpdate === "agent_message_chunk"
-          ? "agent_thought_chunk"
-          : "agent_message_chunk",
-      );
+      for (const kind of this.fallbackChunkIds.keys()) {
+        if (kind !== update.sessionUpdate) this.fallbackChunkIds.delete(kind);
+      }
       if (update.content.type !== "text") return;
       const id = this.resolveChunkId(update.sessionUpdate, update.messageId);
       const text = `${this.messages.get(id) ?? ""}${update.content.text}`;
       this.messages.set(id, text);
+      const messageTypes = {
+        user_message_chunk: "user_message",
+        agent_message_chunk: "assistant_message",
+        agent_thought_chunk: "reasoning",
+      } as const;
       this.emit({
         type: "timeline.item",
         sessionId: this.options.boundarySessionId,
         item: {
-          type: update.sessionUpdate === "agent_message_chunk" ? "assistant_message" : "reasoning",
+          type: messageTypes[update.sessionUpdate],
           id,
           text,
           ...(update.sessionUpdate === "agent_message_chunk"
@@ -946,7 +956,7 @@ class AcpRuntime {
   }
 
   private resolveChunkId(
-    kind: "agent_message_chunk" | "agent_thought_chunk",
+    kind: "agent_message_chunk" | "agent_thought_chunk" | "user_message_chunk",
     messageId: string | null | undefined,
   ): string {
     if (messageId) {
@@ -1432,7 +1442,15 @@ function toolTimelineItem(snapshot: AcpToolCallSnapshot): ToolCallTimelineItem {
     name: snapshot.name ?? snapshot.title,
     detail,
   };
-  if (status === "failed") return { ...base, status, error: snapshot.output };
+  if (status === "failed") {
+    return {
+      ...base,
+      status,
+      error: snapshot.output ?? {
+        message: "Tool failed; the provider did not supply error details.",
+      },
+    };
+  }
   return { ...base, status, error: null };
 }
 
