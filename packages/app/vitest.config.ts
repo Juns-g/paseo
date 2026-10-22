@@ -84,8 +84,8 @@ export default defineConfig({
             {
               find: /^react-native-svg$/,
               replacement: path.resolve(
-                rootNodeModules,
-                "react-native-svg/lib/module/ReactNativeSVG.web.js",
+                resolvePackageEntry("react-native-svg"),
+                "lib/module/ReactNativeSVG.web.js",
               ),
             },
           ],
@@ -118,6 +118,7 @@ export default defineConfig({
       deps: {
         fallbackCJS: true,
         inline: [
+          "react-native-enriched-markdown",
           "zustand",
           "@tanstack/react-query",
           "react-native-web",
