@@ -371,17 +371,22 @@ class AcpRuntime {
   private modes: NewSessionResponse["modes"] = null;
   private commandWaiter: (() => void) | null = null;
   private messageSequence = 0;
-  private replayingHistory = false;
   /**
    * Fallback ids for streamed chunks that carry no `messageId`, one per
    * chunk kind. Consecutive chunks of a kind continue the same timeline
-   * item; a chunk of the other kind, a tool call, a plan, a user message,
-   * or a turn boundary ends it (#4699).
+   * item; a chunk of another kind, a tool call, a plan, or a turn boundary
+   * ends it (#4699).
    */
   private readonly fallbackChunkIds = new Map<
     "agent_message_chunk" | "agent_thought_chunk" | "user_message_chunk",
     string
   >();
+  /**
+   * Active while a persisted session loads. ACP agents replay the loaded
+   * session's updates before session/load resolves; the value follows the
+   * open request's history contract.
+   */
+  private replayWindow: "replay" | "skip" | null = null;
   private closing = false;
   private processFailed = false;
   private configTransaction = false;
@@ -500,8 +505,10 @@ class AcpRuntime {
     };
     let response: Pick<NewSessionResponse, "modes" | "configOptions">;
     if (nativeSessionId) {
+      // ACP agents replay the loaded session's updates before session/load resolves,
+      // so the native id must be registered first for them to pass the session filter.
       this.nativeSessionId = nativeSessionId;
-      this.replayingHistory = input.history === "replay";
+      this.replayWindow = input.history === "replay" ? "replay" : "skip";
       try {
         response = await this.call(
           this.connection.loadSession({
@@ -513,7 +520,7 @@ class AcpRuntime {
         );
         await this.drainNotifications();
       } finally {
-        this.replayingHistory = false;
+        this.replayWindow = null;
       }
     } else {
       const newSession = await this.call(
@@ -905,6 +912,14 @@ class AcpRuntime {
 
   private sessionUpdate(notification: SessionNotification): void {
     if (notification.sessionId !== this.nativeSessionId) return;
+    if (this.replayWindow === "skip") return;
+    if (
+      this.replayWindow === "replay" &&
+      notification.update.sessionUpdate === "user_message_chunk"
+    ) {
+      this.reduceUserMessageChunk(notification.update);
+      return;
+    }
     this.reduceUpdate(notification.update);
   }
 
@@ -914,29 +929,27 @@ class AcpRuntime {
       update.sessionUpdate === "agent_thought_chunk" ||
       update.sessionUpdate === "user_message_chunk"
     ) {
-      // Live user echoes are already recorded by admitPrompt; restored user
-      // messages arrive only in the provider's history replay.
-      if (update.sessionUpdate === "user_message_chunk" && !this.replayingHistory) {
+      if (update.sessionUpdate === "user_message_chunk") {
         this.fallbackChunkIds.clear();
         return;
       }
-      for (const kind of this.fallbackChunkIds.keys()) {
-        if (kind !== update.sessionUpdate) this.fallbackChunkIds.delete(kind);
-      }
+      // A chunk of one kind ends every other kind's open item, whatever its
+      // content or id: reasoning, then text, then reasoning again are three items.
+      this.fallbackChunkIds.delete(
+        update.sessionUpdate === "agent_message_chunk"
+          ? "agent_thought_chunk"
+          : "agent_message_chunk",
+      );
+      this.fallbackChunkIds.delete("user_message_chunk");
       if (update.content.type !== "text") return;
       const id = this.resolveChunkId(update.sessionUpdate, update.messageId);
       const text = `${this.messages.get(id) ?? ""}${update.content.text}`;
       this.messages.set(id, text);
-      const messageTypes = {
-        user_message_chunk: "user_message",
-        agent_message_chunk: "assistant_message",
-        agent_thought_chunk: "reasoning",
-      } as const;
       this.emit({
         type: "timeline.item",
         sessionId: this.options.boundarySessionId,
         item: {
-          type: messageTypes[update.sessionUpdate],
+          type: update.sessionUpdate === "agent_message_chunk" ? "assistant_message" : "reasoning",
           id,
           text,
           ...(update.sessionUpdate === "agent_message_chunk"
@@ -953,6 +966,29 @@ class AcpRuntime {
     }
     if (update.sessionUpdate === "plan") this.fallbackChunkIds.clear();
     this.reduceStateUpdate(update);
+  }
+
+  // Historical user messages arrive only as replayed chunks; a live prompt
+  // already echoes its own user message when it is admitted.
+  private reduceUserMessageChunk(
+    update: Extract<SessionUpdate, { sessionUpdate: "user_message_chunk" }>,
+  ): void {
+    this.fallbackChunkIds.delete("agent_message_chunk");
+    this.fallbackChunkIds.delete("agent_thought_chunk");
+    if (update.content.type !== "text") return;
+    const id = this.resolveChunkId("user_message_chunk", update.messageId);
+    const text = `${this.messages.get(id) ?? ""}${update.content.text}`;
+    this.messages.set(id, text);
+    this.emit({
+      type: "timeline.item",
+      sessionId: this.options.boundarySessionId,
+      item: {
+        type: "user_message",
+        id,
+        text,
+        ...(update.messageId ? { messageId: update.messageId } : {}),
+      },
+    });
   }
 
   private resolveChunkId(

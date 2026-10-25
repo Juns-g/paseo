@@ -62,8 +62,6 @@ export type IconProps = Partial<PluginIconProps> &
 export declare const Icon: ComponentType<IconProps>;
 export declare const Modal: ModalComponent;
 export declare function useToast(): ToastApi;
-// COMPAT(privateBotsReveal): added in v0.13.0, remove after 2027-04-20 once rich-text bots migrate.
-export declare function useRevealedText(text: string, phase: "streaming" | "complete"): string;
 export interface StreamedTextProps extends Omit<TextProps, "children"> {
   text: string;
   phase: "streaming" | "complete";
