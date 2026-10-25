@@ -25,8 +25,6 @@ export { ScrollView, FlatList } from "./scroll-view";
 export { TextInput } from "./text-input";
 export { copyText } from "./clipboard";
 export { useToast } from "./toast";
-// COMPAT(privateBotsReveal): added in v0.13.0, remove after 2027-04-20 once rich-text bots migrate.
-export { useRevealedText } from "@/hooks/use-revealed-text";
 export { StreamedText } from "./streamed-text";
 
 export { Markdown } from "./markdown";
