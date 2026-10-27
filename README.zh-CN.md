@@ -33,7 +33,7 @@
 
 > ### 🛠️ Juns's Custom Fork / 个人增强分支说明
 >
-> 本仓库为个人维护的 Paseo 增强分支（上游官方仓库：[getpaseo/paseo](https://github.com/getpaseo/paseo)，官方网站：[paseo.sh](https://paseo.sh)）。
+> 本仓库为个人维护的 Paseo 增强分支（上游官方仓库：[getpaseo/paseo](https://github.com/getpaseo/paseo)，官方网站：[paseo.sh](https://paseo.sh)；本分支基于 2026-10-27 确认的官方 `main` 提交 `9e4aab16cc74f945f9bb676fcab3d8a9a8b686ca`，并保留必要的个人定制）。
 >
 > **个人定制与采用的官方能力：**
 >
