@@ -196,7 +196,10 @@ export class AgentStorage {
 
     if (previousPath && previousPath !== nextPath) {
       try {
-        await fs.unlink(previousPath);
+        // Case-only cwd changes and directory aliases can name the file just written.
+        if ((await fs.realpath(previousPath)) !== (await fs.realpath(nextPath))) {
+          await fs.unlink(previousPath);
+        }
       } catch {
         // ignore cleanup errors
       }
