@@ -148,6 +148,34 @@ describe("AgentStorage", () => {
     rmSync(tmpDir, { recursive: true, force: true });
   });
 
+  test("cwd bucket aliases preserve the durable agent after reload", async () => {
+    const agent = createManagedAgent({ id: "agent-alias", cwd: "/tmp/source" });
+    await storage.applySnapshot(agent);
+    await fs.symlink(
+      path.join(storagePath, "tmp-source"),
+      path.join(storagePath, "tmp-alias"),
+      "junction",
+    );
+
+    await storage.applySnapshot({ ...agent, cwd: "/tmp/alias" });
+
+    const reloaded = new AgentStorage(storagePath, logger);
+    expect(await reloaded.get(agent.id)).toMatchObject({
+      id: agent.id,
+      cwd: "/tmp/alias",
+    });
+  });
+
+  test("moving to a distinct cwd bucket removes only the old record", async () => {
+    const agent = createManagedAgent({ id: "agent-move", cwd: "/tmp/source" });
+    await storage.applySnapshot(agent);
+    await storage.applySnapshot({ ...agent, cwd: "/tmp/target" });
+
+    expect(await fs.readdir(path.join(storagePath, "tmp-source"))).toEqual([]);
+    const reloaded = new AgentStorage(storagePath, logger);
+    expect(await reloaded.list()).toMatchObject([{ id: agent.id, cwd: "/tmp/target" }]);
+  });
+
   test("applySnapshot persists configs and snapshot metadata", async () => {
     await storage.applySnapshot(
       createManagedAgent({
