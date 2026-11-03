@@ -4336,6 +4336,7 @@ describe("ACP session/load invariant — cwd and mcpServers always passed", () =
         return {
           child: createProbeChildStub(),
           connection: {
+            signal: new AbortController().signal,
             prompt: vi.fn(),
             loadSession,
             unstable_resumeSession: unstableResumeSession,
