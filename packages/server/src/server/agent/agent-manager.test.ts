@@ -10590,6 +10590,100 @@ test("idle runtime cleanup honors a provider veto and resumes the saved conversa
   }
 });
 
+test.each([false, true])(
+  "resuming a collected runtime shows outside turns (durable=%s)",
+  async (durable) => {
+    const workdir = mkdtempSync(join(tmpdir(), "agent-manager-outside-turns-"));
+    const storage = new AgentStorage(join(workdir, "agents"), logger);
+    const seen: AgentTimelineItem[] = [
+      { type: "user_message", text: "marker prompt from Paseo", messageId: "u1" },
+      { type: "assistant_message", text: "marker reply in Paseo" },
+    ];
+    const outside: AgentTimelineItem[] = [
+      { type: "user_message", text: "marker prompt typed in Hermes", messageId: "u2" },
+      { type: "assistant_message", text: "marker reply produced in Hermes" },
+    ];
+    let transcript: AgentTimelineItem[] = [];
+    let failReplay = false;
+    class TranscriptSession extends TestAgentSession {
+      private readonly replay = [...transcript];
+      override async *streamHistory(): AsyncGenerator<AgentStreamEvent> {
+        for (const item of this.replay.splice(0)) {
+          yield { type: "timeline", provider: "codex", item };
+          if (failReplay) throw new Error("outside history interrupted");
+        }
+      }
+    }
+    const client = new (class extends TestAgentClient {
+      override async resumeSession(
+        _handle: AgentPersistenceHandle,
+        config?: Partial<AgentSessionConfig>,
+      ): Promise<AgentSession> {
+        return new TranscriptSession({ provider: "codex", cwd: config?.cwd ?? workdir });
+      }
+    })();
+    const manager = new AgentManager({
+      clients: { codex: client },
+      registry: storage,
+      logger,
+      durableTimelineStore: durable ? new RecordingTimelineStore() : undefined,
+    });
+    const collect = runtimeCleanup(manager);
+    const load = (id: string) =>
+      ensureAgentLoaded(id, { agentManager: manager, agentStorage: storage, logger });
+    try {
+      const agent = await manager.createAgent({ provider: "codex", cwd: workdir }, undefined, {
+        workspaceId: undefined,
+      });
+      for (const item of seen) await manager.appendTimelineItem(agent.id, item);
+      await storage.flush();
+
+      const later = new Date(Date.now() + 61 * 60_000);
+      expect((await collect({ now: later })).collected).toHaveLength(1);
+      // The provider replays nothing: the retained projection is all there is to show.
+      await load(agent.id);
+      expect(manager.getTimeline(agent.id)).toEqual(seen);
+
+      expect(
+        (await collect({ now: new Date(later.getTime() + 61 * 60_000) })).collected,
+      ).toHaveLength(1);
+      transcript = [...seen, ...outside];
+      await load(agent.id);
+      expect(manager.getTimeline(agent.id)).toEqual(transcript);
+      await manager.flush();
+      expect((await manager.getTimelineRows(agent.id)).map((row) => row.item)).toEqual(transcript);
+
+      // Keep both retained stores when a new replay fails after yielding its first row.
+      await manager.closeAgent(agent.id);
+      await storage.flush();
+      failReplay = true;
+      await expect(load(agent.id)).rejects.toThrow("outside history interrupted");
+      const retained = [...transcript];
+      transcript = [];
+      failReplay = false;
+      await load(agent.id);
+      await manager.flush();
+      expect(manager.getTimeline(agent.id)).toEqual(retained);
+      expect((await manager.getTimelineRows(agent.id)).map((row) => row.item)).toEqual(retained);
+
+      // Another native close/open replays the same canonical history, without stacking copies.
+      transcript = retained;
+      await manager.closeAgent(agent.id);
+      await storage.flush();
+      await load(agent.id);
+      await manager.flush();
+      expect(manager.getTimeline(agent.id)).toEqual(transcript);
+      expect((await manager.getTimelineRows(agent.id)).map((row) => row.item)).toEqual(transcript);
+    } finally {
+      await Promise.all(manager.listAgents().map((agent) => manager.closeAgent(agent.id))).catch(
+        () => undefined,
+      );
+      await storage.flush();
+      rmSync(workdir, { recursive: true, force: true });
+    }
+  },
+);
+
 test("idle agents remain resident until an explicit lifecycle action closes them", async () => {
   const workdir = mkdtempSync(join(tmpdir(), "agent-manager-idle-residency-"));
   let closeCount = 0;

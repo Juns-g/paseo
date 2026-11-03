@@ -1532,6 +1532,7 @@ export class AgentManager {
       launchEnv,
       persistence: handle,
       restoring: true,
+      replaceRetainedTimeline: true,
     });
   }
 
@@ -3803,6 +3804,8 @@ export class AgentManager {
        * activity in it.
        */
       restoring?: boolean;
+      /** Rebuild a timeline kept from a closed runtime from this session's non-empty replay. */
+      replaceRetainedTimeline?: boolean;
       initialTitle?: string | null;
       publishWhenReady?: boolean;
       workspaceId?: string;
@@ -3839,29 +3842,25 @@ export class AgentManager {
         options,
       });
 
-      // Read history before publishing the agent: a provider failure must leave the
-      // session unregistered so the registration catch closes it.
-      const startupHistory: AgentStreamEvent[] = [];
-      if (session.initialTimeline?.length && !managed.historyPrimed) {
-        for await (const event of session.streamHistory()) {
-          startupHistory.push(limitAgentStreamEventContent(event));
-        }
-      }
+      const startupHistory = await this.readStartupHistoryForRegister(
+        managed,
+        options?.replaceRetainedTimeline === true,
+      );
 
       this.assertAcceptingAgentRegistrations();
       this.agents.set(resolvedAgentId, managed);
       registered = true;
       // Initialize previousStatus to track transitions
       this.previousStatuses.set(resolvedAgentId, managed.lifecycle);
-      if (session.initialTimeline?.length) {
-        if (!managed.historyPrimed) {
-          // Legacy/imported chats need their existing history before startup rows.
-          await this.primeTimelineFromLegacyProviderHistory(managed, false, startupHistory);
-        } else {
-          for (const entry of buildImportedTimelineRows(session.initialTimeline)) {
-            this.recordTimeline(managed.id, entry.item, { timestamp: entry.timestamp });
-          }
+      if (!managed.historyPrimed && startupHistory) {
+        // Legacy/imported chats need their existing history before startup rows.
+        await this.primeTimelineFromLegacyProviderHistory(managed, false, startupHistory);
+      } else if (session.initialTimeline?.length) {
+        for (const entry of buildImportedTimelineRows(session.initialTimeline)) {
+          this.recordTimeline(managed.id, entry.item, { timestamp: entry.timestamp });
         }
+      }
+      if (session.initialTimeline?.length) {
         this.refreshSessionPersistence(managed);
       }
       await this.refreshRuntimeInfo(managed, { emit: false });
@@ -3896,6 +3895,34 @@ export class AgentManager {
       }
       throw error;
     }
+  }
+
+  private async readStartupHistoryForRegister(
+    agent: ActiveManagedAgent,
+    replaceRetainedTimeline: boolean,
+  ): Promise<AgentStreamEvent[] | null> {
+    const readsHistory = agent.historyPrimed
+      ? replaceRetainedTimeline
+      : Boolean(agent.session.initialTimeline?.length);
+    if (!readsHistory) return null;
+
+    // Read before publication or clearing retained state: a failed replay leaves the old display
+    // intact and lets the registration catch close this unregistered provider session.
+    const history: AgentStreamEvent[] = [];
+    for await (const event of agent.session.streamHistory()) {
+      history.push(limitAgentStreamEventContent(event));
+    }
+    // A collected runtime's projection can be stale after activity on another surface. A nonempty
+    // canonical replay rebuilds it as on cold resume; an empty replay keeps the retained display.
+    if (agent.historyPrimed && history.some((event) => event.type === "timeline")) {
+      this.timelineStore.delete(agent.id);
+      this.timelineStore.initialize(agent.id);
+      for (const event of this.providerSubagents.deleteParent(agent.id)) {
+        this.dispatch({ type: "provider_subagent", event });
+      }
+      agent.historyPrimed = false;
+    }
+    return history;
   }
 
   private assertAcceptingAgentRegistrations(): void {

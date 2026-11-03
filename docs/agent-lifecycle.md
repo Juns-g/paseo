@@ -39,8 +39,9 @@ An unarchived agent may be `closed` without being deleted or archived. Closing r
 processes and subscriptions while retaining its Paseo identity, persistence handle, timeline,
 workspace, labels, title, usage, attention, timestamps, and parent relationship. Opening or prompting
 the agent runs through `ensureAgentLoaded()`, which resumes the durable provider session under the
-same Paseo agent ID. Provider history is not appended again when the canonical timeline is already
-primed.
+same Paseo agent ID. A nonempty provider replay rebuilds the retained timeline so turns made on
+another surface appear on reopening. An empty replay keeps the retained display. History is read
+completely before replacement; a failed read leaves the prior display intact.
 
 Reload releases the old runtime before resuming its durable session: an idle provider process can
 still own an exclusive writer. A close failure retains that runtime for cleanup and blocks the
