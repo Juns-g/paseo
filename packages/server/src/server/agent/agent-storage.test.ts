@@ -175,7 +175,7 @@ describe("AgentStorage", () => {
 
     expect(await fs.readdir(path.join(storagePath, "tmp-source"))).toEqual([]);
     const reloaded = new AgentStorage(storagePath, logger);
-    expect(await reloaded.list()).toMatchObject([{ id: agent.id, cwd: "/tmp/target" }]);
+    expect(await reloaded.listAll()).toMatchObject([{ id: agent.id, cwd: "/tmp/target" }]);
   });
 
   test("workspace and active queries follow updates, removal, and reload", async () => {

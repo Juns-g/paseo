@@ -1564,7 +1564,8 @@ export class AgentManager {
       launchEnv,
       persistence: handle,
       restoring: true,
-      replaceRetainedTimeline: true,
+      // History-only loads can return a partial provider replay. Keep the retained timeline.
+      replaceRetainedTimeline: purpose === "interactive",
     });
   }
 

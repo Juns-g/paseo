@@ -97,9 +97,6 @@ export default defineConfig({
       },
       {
         extends: true,
-        optimizeDeps: {
-          esbuildOptions: { resolveExtensions: [".web.js", ".js", ".ts", ".tsx", ".json"] },
-        },
         resolve: {
           alias: [
             {
