@@ -58,6 +58,9 @@ import type {
 import type { PaseoToolCatalog } from "./tools/types.js";
 import type { ProviderDefinition } from "./provider-registry.js";
 
+import { OpenCodeV2AgentClient } from "./providers/opencode/v2/agent.js";
+import { V2Harness } from "./providers/opencode/test-utils/v2-harness.js";
+
 const DESKTOP_OPEN_AGENT_TAB_LABEL = getOpenAgentTabLabel("desktop-client");
 const MOBILE_OPEN_AGENT_TAB_LABEL = getOpenAgentTabLabel("mobile-client");
 
@@ -669,6 +672,33 @@ async function startAndSteerThroughManager(
   });
   return { manager, agentId: agent.id, workdir };
 }
+
+test("stops an OpenCode execution already active when its conversation is reopened", async () => {
+  const workdir = mkdtempSync(join(tmpdir(), "agent-manager-opencode-resume-"));
+  onTestFinished(() => rmSync(workdir, { recursive: true, force: true }));
+  const harness = new V2Harness();
+  harness.info.location.directory = workdir;
+  harness.startExecution();
+  const client = new OpenCodeV2AgentClient({ logger, runtime: harness.runtime });
+  const manager = new AgentManager({ clients: { opencode: client }, logger });
+  const agent = await manager.resumeAgentFromPersistence({
+    provider: "opencode",
+    sessionId: "session",
+    nativeHandle: "session",
+    metadata: { cwd: workdir },
+  });
+  try {
+    expect(await manager.cancelAgentRun(agent.id)).toEqual({ status: "settled" });
+    expect(harness.active).toBe(false);
+    for await (const _event of manager.streamAgent(agent.id, "continue after restart")) {
+      // Drain the next turn through the same interface used by callers.
+    }
+    expect(harness.prompts).toEqual(["continue after restart"]);
+  } finally {
+    await manager.closeAgent(agent.id);
+    await client.shutdown();
+  }
+});
 
 test("uses an injected timeline store without making it a production requirement", async () => {
   const workdir = mkdtempSync(join(tmpdir(), "agent-manager-timeline-store-"));
@@ -4096,7 +4126,7 @@ test("createAgent rejects a disabled provider without creating a session", async
     ),
   ).rejects.toThrow("Provider 'codex' is disabled");
   expect(disabledClient.createSessionCalls).toBe(0);
-  expect(await storage.list()).toHaveLength(0);
+  expect(await storage.listAll()).toHaveLength(0);
 });
 
 test("updateProviderRegistry re-enables a previously disabled provider", async () => {
@@ -8277,7 +8307,7 @@ test("archiveAgent closes an internal agent without writing a record", async () 
   expect(Number.isNaN(Date.parse(archivedAt))).toBe(false);
   expect(manager.getAgent(internalAgentId)).toBeNull();
   expect(await storage.get(internalAgentId)).toBeNull();
-  expect(await storage.list()).toEqual([]);
+  expect(await storage.listAll()).toEqual([]);
   expect(manager.getRetiredInternalAgent(internalAgentId)).toEqual({
     record: expect.objectContaining({
       id: internalAgentId,
@@ -9383,8 +9413,8 @@ test("archiveAgent re-reads a child before deciding whether to cascade", async (
   class ChildOpensAfterCascadeListStorage extends AgentStorage {
     childId: string | null = null;
 
-    override async list(): Promise<StoredAgentRecord[]> {
-      const records = await super.list();
+    override async listActive(): Promise<StoredAgentRecord[]> {
+      const records = await super.listAll();
       const parentIsArchived = records.some(
         (record) => record.id !== this.childId && Boolean(record.archivedAt),
       );
