@@ -1683,8 +1683,16 @@ lines.on("line", (line) => {
   );
 
   it.each([
-    { status: "failed", output: undefined, error: { message: "Tool failed; the provider did not supply error details." } },
-    { status: "failed", output: null, error: { message: "Tool failed; the provider did not supply error details." } },
+    {
+      status: "failed",
+      output: undefined,
+      error: { message: "Tool failed; the provider did not supply error details." },
+    },
+    {
+      status: "failed",
+      output: null,
+      error: { message: "Tool failed; the provider did not supply error details." },
+    },
     {
       status: "failed",
       output: { message: "File not found" },
