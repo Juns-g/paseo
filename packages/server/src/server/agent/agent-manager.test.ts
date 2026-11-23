@@ -1754,7 +1754,7 @@ test("steers a tracked autonomous turn without creating a replacement run", asyn
   }
 });
 
-test("autonomous completion notifies again when the previous reply is still unread", async () => {
+test("Hermes background completion produces a new unread finish", async () => {
   const session = new SteeringTestSession({ provider: "claude", cwd: process.cwd() });
   const workdir = mkdtempSync(join(tmpdir(), "agent-manager-background-attention-"));
   const client = new (class extends TestAgentClient {
@@ -1775,13 +1775,21 @@ test("autonomous completion notifies again when the previous reply is still unre
     });
     agentId = agent.id;
     for (const turnId of ["initial", "background"]) {
-      session.pushEvent({ type: "turn_started", provider: "claude", turnId });
+      session.pushEvent({
+        type: "turn_started",
+        provider: "claude",
+        turnId,
+        hermesBackground: true,
+      });
       await vi.waitFor(() => expect(manager.getAgent(agent.id)?.lifecycle).toBe("running"));
       session.pushEvent({ type: "turn_completed", provider: "claude", turnId });
       await vi.waitFor(() => expect(manager.getAgent(agent.id)?.lifecycle).toBe("idle"));
       expect(manager.getAgent(agent.id)?.attention.requiresAttention).toBe(true);
     }
     expect(attention).toHaveBeenCalledTimes(2);
+    expect(attention.mock.calls[1]?.[0].attentionTimestamp).not.toEqual(
+      attention.mock.calls[0]?.[0].attentionTimestamp,
+    );
   } finally {
     if (agentId) await manager.closeAgent(agentId).catch(() => undefined);
     rmSync(workdir, { recursive: true, force: true });

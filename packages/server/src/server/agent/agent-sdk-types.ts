@@ -424,7 +424,7 @@ export type AgentTimelineItem =
 
 export type AgentStreamEvent =
   | { type: "thread_started"; sessionId: string; provider: AgentProvider }
-  | { type: "turn_started"; provider: AgentProvider; turnId?: string }
+  | { type: "turn_started"; provider: AgentProvider; turnId?: string; hermesBackground?: true }
   | {
       type: "turn_completed";
       provider: AgentProvider;

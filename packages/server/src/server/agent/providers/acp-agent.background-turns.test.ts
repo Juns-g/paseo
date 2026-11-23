@@ -59,7 +59,9 @@ describe("Hermes ACP background turns", () => {
         error: "model failed",
       });
       await session.extNotification("_hermes/background_turn", { ...params, status });
-      expect(events.filter((event) => event.type === "turn_started")).toHaveLength(1);
+      expect(events.filter((event) => event.type === "turn_started")).toMatchObject([
+        { turnId: "background-1", hermesBackground: true },
+      ]);
       const message = events.find((event) => event.type === "timeline");
       expect(message?.turnId).toBe("background-1");
       const expected = {

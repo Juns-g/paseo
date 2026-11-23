@@ -3048,7 +3048,12 @@ export class ACPAgentSession implements AgentSession, ACPClient {
       });
       this.backgroundTurnCompletion = { promise, resolve };
       this.fallbackAssistantMessageId = null;
-      this.pushEvent({ type: "turn_started", provider: this.provider, turnId });
+      this.pushEvent({
+        type: "turn_started",
+        provider: this.provider,
+        turnId,
+        hermesBackground: true,
+      });
       return;
     }
     if (turnId !== this.backgroundTurnId) return;

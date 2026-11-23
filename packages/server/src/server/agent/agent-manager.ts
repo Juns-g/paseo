@@ -5611,7 +5611,7 @@ export class AgentManager {
         });
         return undefined;
       case "turn_started":
-        this.onStreamTurnStarted({ agent, eventTurnId, isForegroundEvent, flags });
+        this.onStreamTurnStarted({ agent, event, eventTurnId, isForegroundEvent, flags });
         return undefined;
       case "permission_requested":
         this.onStreamPermissionRequested(agent, event);
@@ -5817,11 +5817,12 @@ export class AgentManager {
 
   private onStreamTurnStarted(params: {
     agent: ActiveManagedAgent;
+    event: Extract<AgentStreamEvent, { type: "turn_started" }>;
     eventTurnId: string | undefined;
     isForegroundEvent: boolean;
     flags: StreamEventFlags;
   }): void {
-    const { agent, eventTurnId, isForegroundEvent, flags } = params;
+    const { agent, event, eventTurnId, isForegroundEvent, flags } = params;
     this.logger.trace(
       {
         agentId: agent.id,
@@ -5844,15 +5845,16 @@ export class AgentManager {
       return;
     }
     this.runs.trackAutonomousRun(agent.id, eventTurnId ?? null);
-    // A new autonomous run must not inherit the previous run's unread completion.
-    agent.attention = { requiresAttention: false };
     if (eventTurnId) {
       this.openActiveTurn(agent, eventTurnId, new Date());
     }
     agent.lastError = undefined;
-    // Nobody read the agent, so an unread finish stays unread. Clearing it would make every
-    // turn the agent starts on its own, such as a reaction to background output, notify again.
-    if (agent.attention.requiresAttention && agent.attention.attentionReason === "error") {
+    // Each negotiated Hermes background completion is independently actionable.
+    // Generic autonomous turns retain their unread finish to avoid duplicate notifications.
+    if (
+      event.hermesBackground ||
+      (agent.attention.requiresAttention && agent.attention.attentionReason === "error")
+    ) {
       agent.attention = { requiresAttention: false };
     }
     agent.lifecycle = "running";
