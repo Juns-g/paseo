@@ -1111,3 +1111,30 @@ describe("retired fork HTTP metadata config", () => {
     }
   });
 });
+
+test.each([
+  ["goose", "goose"],
+  ["goose", "/opt/bin/goose"],
+  ["hermes", "hermes"],
+  ["hermes", "/opt/bin/hermes"],
+])("migrates the legacy %s entry and preserves command overrides (%s acp)", (provider, binary) => {
+  const command = [binary, "acp"];
+  const overrides = {
+    enabled: false,
+    label: `My ${provider}`,
+    env: { PROVIDER_ENV: "value" },
+    models: [{ id: "primary", label: "Primary" }],
+    additionalModels: [{ id: "secondary", label: "Secondary" }],
+  };
+  const parsed = PersistedConfigSchema.parse({
+    agents: {
+      providers: {
+        [provider]: { ...overrides, extends: "acp", description: "Old description", command },
+      },
+    },
+  });
+  expect(parsed.agents?.providers?.[provider]).toEqual({
+    ...overrides,
+    ...(binary === provider ? {} : { command }),
+  });
+});
