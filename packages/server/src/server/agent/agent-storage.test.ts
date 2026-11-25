@@ -237,7 +237,6 @@ describe("AgentStorage", () => {
       cwd: "/tmp/second-project",
     });
   });
-
   test("workspace and active queries follow updates, removal, and reload", async () => {
     const base = {
       provider: "codex",

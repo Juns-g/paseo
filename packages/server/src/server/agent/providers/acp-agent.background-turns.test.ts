@@ -118,6 +118,19 @@ describe("Hermes ACP background turns", () => {
     ).toEqual(["background"]);
   });
 
+  test("vetoes idle runtime shutdown while a background turn outlasts the foreground turn", async () => {
+    const { session, internals } = harness();
+    const params = { sessionId: "owner", turnId: "background" };
+    internals.activeForegroundTurnId = "user";
+    await session.extNotification("_hermes/background_turn", { ...params, status: "started" });
+    internals.activeForegroundTurnId = null;
+
+    expect(await session.canStopRuntime()).toBe(false);
+
+    await session.extNotification("_hermes/background_turn", { ...params, status: "completed" });
+    expect(await session.canStopRuntime()).toBe(true);
+  });
+
   test("interrupt waits for the background cancellation acknowledgement", async () => {
     const { session, events } = harness();
     const cancel = vi.fn(async () => {});

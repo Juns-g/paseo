@@ -2930,6 +2930,7 @@ export class ACPAgentSession implements AgentSession, ACPClient {
   async canStopRuntime(): Promise<boolean> {
     return (
       this.activeForegroundTurnId === null &&
+      this.backgroundTurnId === null &&
       this.pendingPermissions.size === 0 &&
       this.pendingUserMessage === null &&
       !Array.from(this.terminalEntries.values()).some((terminal) => terminal.running)

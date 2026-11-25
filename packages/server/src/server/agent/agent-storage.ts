@@ -341,7 +341,7 @@ export class AgentStorage {
     if (previousPath && previousPath !== nextPath) {
       try {
         // Compare the entries after the atomic replacement. On a case-insensitive
-        // volume both spellings can now address the file we just wrote.
+        // volume or aliased directory bucket, both spellings can now address the file we just wrote.
         const [previous, next] = await Promise.all([
           fs.lstat(previousPath, { bigint: true }),
           fs.lstat(nextPath, { bigint: true }),
