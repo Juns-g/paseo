@@ -1093,8 +1093,6 @@ describe("speech provider config normalization", () => {
 test.each([
   ["goose", "goose"],
   ["goose", "/opt/bin/goose"],
-  ["hermes", "hermes"],
-  ["hermes", "/opt/bin/hermes"],
 ])("migrates the legacy %s entry and preserves command overrides (%s acp)", (provider, binary) => {
   const command = [binary, "acp"];
   const overrides = {
@@ -1115,6 +1113,12 @@ test.each([
     ...overrides,
     ...(binary === provider ? {} : { command }),
   });
+});
+
+test("keeps legacy extends:acp Hermes entries on the generic ACP provider", () => {
+  const entry = { extends: "acp", label: "Hermes", command: ["hermes", "acp"] };
+  const parsed = PersistedConfigSchema.parse({ agents: { providers: { hermes: entry } } });
+  expect(parsed.agents?.providers?.hermes).toEqual(entry);
 });
 
 describe("retired fork HTTP metadata config", () => {

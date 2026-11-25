@@ -202,8 +202,8 @@ function isLegacyProviderEntry(value: unknown): boolean {
 const BUNDLED_FORMER_ACP_PROVIDERS = [
   // COMPAT(gooseProvider): added in v0.17.0, remove after 2027-05-20 once legacy configs have migrated.
   "goose",
-  // COMPAT(hermesProvider): added in v0.17.4, remove after 2027-05-23 once legacy configs have migrated.
-  "hermes",
+  // Juns fork: keep `extends: "acp"` Hermes configs on the generic ACP session, which carries the
+  // negotiated Hermes background-turn support that the bundled plugin shim does not implement yet.
 ] as const;
 
 function normalizeAgentProviders(value: unknown): unknown {
