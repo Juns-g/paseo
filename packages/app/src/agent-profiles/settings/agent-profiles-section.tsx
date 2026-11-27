@@ -44,7 +44,6 @@ import {
   AgentProfileRow,
   ROSTER_COL_PROFILE_WIDTH,
   ROSTER_COL_RUNTIME_WIDTH,
-  ROSTER_GRIP_WIDTH,
   ROSTER_TRAILING_WIDTH,
 } from "./agent-profile-row";
 
@@ -73,16 +72,23 @@ function matchesProfileQuery(
   normalizedQuery: string,
   entries: readonly ProviderSnapshotEntry[] | undefined,
   formatFeatureCount: (count: number) => string,
+  systemPromptLabel: string,
 ): boolean {
   if (
     profile.name.toLowerCase().includes(normalizedQuery) ||
+    profile.systemPrompt?.toLowerCase().includes(normalizedQuery) ||
     profile.notes?.toLowerCase().includes(normalizedQuery) ||
     profile.model?.toLowerCase().includes(normalizedQuery) ||
     profile.provider.toLowerCase().includes(normalizedQuery)
   ) {
     return true;
   }
-  const tags = buildAgentProfileTags({ profile, entries, formatFeatureCount });
+  const tags = buildAgentProfileTags({
+    profile,
+    entries,
+    formatFeatureCount,
+    systemPromptLabel,
+  });
   return tags.some((tag) => tag.label.toLowerCase().includes(normalizedQuery));
 }
 
@@ -90,7 +96,6 @@ function RosterTableHeader(): ReactElement {
   const { t } = useTranslation();
   return (
     <View style={styles.tableHeader}>
-      <View style={styles.tableHeaderGripSpacer} />
       <View style={styles.tableHeaderColumns}>
         <Text style={[styles.tableHeaderText, styles.colProfileHeader]} numberOfLines={1}>
           {t("settings.host.agentProfiles.columns.profile")}
@@ -859,6 +864,7 @@ export function AgentProfilesPage({
     [t],
   );
 
+  const systemPromptLabel = t("settings.host.agentProfiles.systemPromptLabel");
   const normalizedQuery = searchQuery.trim().toLowerCase();
   const isFiltering = normalizedQuery.length > 0;
 
@@ -870,9 +876,9 @@ export function AgentProfilesPage({
       return profiles;
     }
     return profiles.filter((profile) =>
-      matchesProfileQuery(profile, normalizedQuery, entries, formatFeatureCount),
+      matchesProfileQuery(profile, normalizedQuery, entries, formatFeatureCount, systemPromptLabel),
     );
-  }, [entries, formatFeatureCount, normalizedQuery, profiles]);
+  }, [entries, formatFeatureCount, normalizedQuery, profiles, systemPromptLabel]);
 
   const totalCount = profiles?.length ?? 0;
   const selectedProfileId = activeProfile?.id ?? null;
@@ -942,10 +948,12 @@ export function AgentProfilesPage({
         <View style={styles.rosterPane}>
           <PageLayout
             title={t("settings.host.agentProfiles.sectionTitle")}
+            description={t("settings.host.agentProfiles.sectionDescription")}
             onBack={onBack}
             actions={headerActions}
             width="wide"
             titleTestID="settings-detail-header-title"
+            descriptionTestID="agent-profiles-description"
             testID="settings-detail-scroll-body"
           >
             <RosterBody
@@ -1030,15 +1038,10 @@ const styles = StyleSheet.create((theme) => ({
     flexDirection: "row",
     alignItems: "center",
     paddingVertical: theme.spacing[2],
-    paddingLeft: theme.spacing[2],
-    paddingRight: theme.spacing[4],
+    paddingHorizontal: theme.spacing[4],
     gap: theme.spacing[2],
     borderBottomWidth: theme.borderWidth[1],
     borderBottomColor: theme.colors.border,
-  },
-  tableHeaderGripSpacer: {
-    width: ROSTER_GRIP_WIDTH,
-    flexShrink: 0,
   },
   tableHeaderColumns: {
     flex: 1,

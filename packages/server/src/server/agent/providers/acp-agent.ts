@@ -3,7 +3,7 @@ import { ACPProviderOptionsSchema } from "./acp-options.js";
 import { applyProviderOptionsPatch } from "../option-controls.js";
 import { assertChangesAreLive } from "../provider-options.js";
 import { type ChildProcess, type ChildProcessWithoutNullStreams } from "node:child_process";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { once } from "node:events";
 import fs from "node:fs/promises";
 import { homedir } from "node:os";
@@ -11,6 +11,8 @@ import path from "node:path";
 import { Readable, Writable } from "node:stream";
 import { setImmediate } from "node:timers/promises";
 
+import type { ProviderCatalogRefreshMode } from "@getpaseo/plugin/server/provider";
+import { resolveDaemonVersion } from "../../daemon-version.js";
 import { terminateWithTreeKill } from "../../../utils/tree-kill.js";
 import type { ProcessTerminator } from "../../../utils/tree-kill.js";
 import type {
@@ -556,6 +558,8 @@ interface ACPAgentSessionOptions {
   configuredModelIds?: readonly string[];
   agentId?: string;
   launchEnv?: Record<string, string>;
+  /** Start the agent, and every terminal it asks for, as `[...wrap, command, ...args]`. */
+  wrap?: AgentLaunchContext["wrap"];
   waitForInitialCommands?: boolean;
   initialCommandsWaitTimeoutMs?: number;
   terminateProcess?: ProcessTerminator;
@@ -1053,8 +1057,22 @@ function isACPCreateConfigUnattended(input: AgentCreateConfigUnattendedInput): b
   );
 }
 
+let cachedAcpClientInfo: { name: string; title: string; version: string } | null = null;
+
+function resolveAcpClientInfo(): { name: string; title: string; version: string } {
+  if (!cachedAcpClientInfo) {
+    cachedAcpClientInfo = {
+      name: "paseo",
+      title: "Paseo",
+      version: resolveDaemonVersion(import.meta.url),
+    };
+  }
+  return cachedAcpClientInfo;
+}
+
 export class ACPAgentClient implements AgentClient {
   readonly provider: string;
+  readonly catalogRefresh: ProviderCatalogRefreshMode = "on_demand";
   private readonly usageProvider?: string;
   readonly capabilities: AgentCapabilityFlags;
   readonly resolveCreateConfig = resolveACPCreateConfig;
@@ -1160,6 +1178,7 @@ export class ACPAgentClient implements AgentClient {
         configuredModelIds: options?.configuredModelIds,
         agentId: launchContext?.agentId,
         launchEnv: launchContext?.env,
+        wrap: launchContext?.wrap,
         extensionCommandsParser: this.extensionCommandsParser,
         waitForInitialCommands: this.waitForInitialCommands,
         initialCommandsWaitTimeoutMs: this.initialCommandsWaitTimeoutMs,
@@ -1220,6 +1239,7 @@ export class ACPAgentClient implements AgentClient {
       configuredModelIds: options?.configuredModelIds,
       agentId: launchContext?.agentId,
       launchEnv: launchContext?.env,
+      wrap: launchContext?.wrap,
       extensionCommandsParser: this.extensionCommandsParser,
       waitForInitialCommands: this.waitForInitialCommands,
       initialCommandsWaitTimeoutMs: this.initialCommandsWaitTimeoutMs,
@@ -1546,6 +1566,64 @@ export class ACPAgentClient implements AgentClient {
     });
   }
 
+  async getCatalogCacheKey(_options: FetchCatalogOptions): Promise<string> {
+    const env = createProviderEnv({ runtimeSettings: this.runtimeSettings });
+    const sortedEnv = Object.entries(env).sort(([a], [b]) => a.localeCompare(b));
+    let command: string;
+    let args: string[];
+    try {
+      const prefix = await resolveProviderLaunch({
+        commandConfig: this.runtimeSettings?.command,
+        defaultBinary: this.defaultCommand[0],
+      });
+      const resolvedArgs =
+        prefix.source === "override"
+          ? prefix.args
+          : [...prefix.args, ...this.defaultCommand.slice(1)];
+      const availability = await checkProviderLaunchAvailable(
+        {
+          ...prefix,
+          env,
+        },
+        undefined,
+        { probe: false },
+      );
+      command = availability.resolvedPath
+        ? path.resolve(availability.resolvedPath)
+        : `unresolved:${prefix.command}`;
+      args = resolvedArgs;
+    } catch {
+      command = `unresolved:${this.defaultCommand[0]}`;
+      args = this.defaultCommand.slice(1);
+    }
+    return createHash("sha256")
+      .update(JSON.stringify(["acp:global/1", command, args, sortedEnv]))
+      .digest("hex");
+  }
+
+  async getCatalogBinaryFingerprint(_options: FetchCatalogOptions): Promise<string | undefined> {
+    try {
+      const env = createProviderEnv({ runtimeSettings: this.runtimeSettings });
+      const prefix = await resolveProviderLaunch({
+        commandConfig: this.runtimeSettings?.command,
+        defaultBinary: this.defaultCommand[0],
+      });
+      const availability = await checkProviderLaunchAvailable(
+        {
+          ...prefix,
+          env,
+        },
+        undefined,
+        { probe: false },
+      );
+      if (!availability.resolvedPath) return undefined;
+      const info = await fs.stat(path.resolve(availability.resolvedPath));
+      return `${info.mtimeMs}:${info.size}`;
+    } catch {
+      return undefined;
+    }
+  }
+
   async isAvailable(): Promise<boolean> {
     try {
       await this.resolveLaunchCommand();
@@ -1706,7 +1784,7 @@ export class ACPAgentClient implements AgentClient {
               this.clientCapabilityMeta,
               clientCapabilities ?? this.clientCapabilities,
             ),
-            clientInfo: { name: "Paseo", version: "dev" },
+            clientInfo: resolveAcpClientInfo(),
           }),
           transport.processError,
           ...(initializeTimeoutPromise ? [initializeTimeoutPromise] : []),
@@ -1959,6 +2037,7 @@ export class ACPAgentSession implements AgentSession, ACPClient {
   ) => Promise<void>;
   private readonly agentId?: string;
   private readonly launchEnv?: Record<string, string>;
+  private readonly wrap?: AgentLaunchContext["wrap"];
   private readonly usageProvider?: string;
   private readonly usageSessionKey = randomUUID();
   private readonly harnessEnvironment: Record<string, string>;
@@ -2036,6 +2115,7 @@ export class ACPAgentSession implements AgentSession, ACPClient {
     this.availableModes = options.defaultModes;
     this.agentId = options.agentId;
     this.launchEnv = options.launchEnv;
+    this.wrap = options.wrap;
     this.usageProvider = options.usageProvider;
     this.harnessEnvironment = createProviderEnv({
       runtimeSettings: options.runtimeSettings,
@@ -3231,7 +3311,9 @@ export class ACPAgentSession implements AgentSession, ACPClient {
       terminalCommand.shell === false
         ? [this.launchEnv, env, createStringCommandShellEnvOverlay()]
         : [this.launchEnv, env];
+    // A terminal runs commands for the agent, so it runs behind the agent's wrap too.
     const child = spawnProcess(terminalCommand.command, terminalCommand.args, {
+      wrap: this.wrap,
       cwd: params.cwd ?? this.config.cwd,
       ...createProviderEnvSpec({
         runtimeSettings: this.runtimeSettings,
@@ -3336,6 +3418,7 @@ export class ACPAgentSession implements AgentSession, ACPClient {
     const command = prefix.command;
     const args = [...prefix.args, ...this.defaultCommand.slice(1)];
     const child = spawnProcess(command, args, {
+      wrap: this.wrap,
       cwd: await this.resolveProcessCwd(),
       ...createProviderEnvSpec({
         runtimeSettings: this.runtimeSettings,
@@ -3392,7 +3475,7 @@ export class ACPAgentSession implements AgentSession, ACPClient {
             this.clientCapabilityMeta,
             this.clientCapabilities,
           ),
-          clientInfo: { name: "Paseo", version: "dev" },
+          clientInfo: resolveAcpClientInfo(),
         }),
         processError,
       ]),

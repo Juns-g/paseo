@@ -293,6 +293,7 @@ export const en = {
     archived: {
       callout: "This agent is archived",
       unarchive: "Unarchive",
+      unarchiving: "Unarchiving...",
     },
   },
   sessions: {
@@ -654,6 +655,24 @@ export const en = {
         invalidUrl: "Invalid browser URL",
         unsupportedProtocol: "Blocked unsupported browser URL: {{protocol}}",
       },
+      routing: {
+        tooltipHost: "Browsing through {{hostName}}. Click to browse locally.",
+        tooltipLocal: "Browsing locally. Click to browse through {{hostName}}.",
+        switchToLocal: "Switch browser routing from {{hostName}} to Local",
+        switchToHost: "Switch browser routing from Local to {{hostName}}",
+      },
+      proxy: {
+        connecting: "Connecting to {{hostName}}...",
+        reconnecting: "Reconnecting to {{hostName}}...",
+        updateTitle: "Update {{hostName}} to browse through this host",
+        updateDescription: "This host does not support browser proxying yet.",
+        routedTitle: "Browser proxy is not available for routed hosts",
+        routedDescription: "Connect directly to this host or browse locally.",
+        offlineTitle: "{{hostName}} is offline",
+        offlineDescription: "Wait for the host to reconnect or browse locally.",
+        errorTitle: "Could not connect browser proxy",
+        browseLocally: "Browse locally",
+      },
     },
     terminal: {
       hostDisconnected: "Host is not connected",
@@ -971,6 +990,8 @@ export const en = {
         },
         archiveWarning: {
           title: 'Archive "{{workspaceName}}"?',
+          bulkTitle: "Archive {{count}} workspaces?",
+          bulkWorkspaceReason: "{{workspaceName}}: {{reason}}",
           confirm: "Archive",
           cancel: "Cancel",
           uncommittedChanges: "Uncommitted changes",
@@ -1380,6 +1401,7 @@ export const en = {
         rename: "Rename workspace",
         pin: "Pin to top",
         unpin: "Unpin",
+        select: "Select",
         archive: "Archive",
         archiveWorkspace: "Archive workspace",
         hideFromSidebar: "Hide from sidebar",
@@ -1398,6 +1420,10 @@ export const en = {
         submit: "Rename",
         invalidBranchName: "Invalid branch name",
       },
+      selection: {
+        count: "{{count}} selected",
+        exit: "Exit selection",
+      },
       toasts: {
         workspacePathUnavailable: "Workspace path not available",
         pathCopied: "Path copied",
@@ -1405,7 +1431,9 @@ export const en = {
         hostDisconnected: "Host is not connected",
         hideFailed: "Failed to hide workspace",
         archiveFailed: "Failed to archive workspace",
+        archiveMultipleFailed: "Failed to archive {{count}} workspaces",
         archived: "Workspace archived",
+        archivedCount: "{{count}} workspaces archived",
         undoArchive: "Undo",
         undoArchiveFailed: "Couldn't undo the archive",
       },
@@ -1568,6 +1596,8 @@ export const en = {
       status: {
         checking: "Checking for app updates...",
         installing: "Installing app update...",
+        downloadingVersionProgress: "Downloading {{version}}... {{percent}}%",
+        downloadingProgress: "Downloading app update... {{percent}}%",
         upToDate: "App is up to date.",
         upToDateWithLastChecked: "Up to date. Last checked at {{time}}.",
         pending: "We'll let you know when the update is ready.",
@@ -1576,6 +1606,14 @@ export const en = {
         pendingWithVersion: "Update found: {{version}}. Downloading...",
         pendingWithVersionAndLastChecked:
           "Update found: {{version}}. Downloading... Last checked at {{time}}.",
+        pendingWithVersionProgress: "Update found: {{version}}. Downloading... {{percent}}%",
+        pendingWithVersionProgressAndLastChecked:
+          "Update found: {{version}}. Downloading... {{percent}}% Last checked at {{time}}.",
+        downloadAvailableWithVersion: "Update available: {{version}}",
+        downloadAvailableWithVersionAndLastChecked:
+          "Update available: {{version}}. Last checked at {{time}}.",
+        downloadAvailable: "An app update is available.",
+        downloadAvailableWithLastChecked: "An app update is available. Last checked at {{time}}.",
         availableWithVersion: "Update ready: {{version}}",
         availableWithVersionAndLastChecked: "Update ready: {{version}}. Last checked at {{time}}.",
         available: "An app update is ready to install.",
@@ -1586,14 +1624,21 @@ export const en = {
       },
       installError: "Unable to install the desktop app update.",
       callout: {
+        downloadingTitle: "Downloading update",
         installingTitle: "Installing update",
         failedTitle: "Update failed",
         availableTitle: "Update available",
         genericError: "Something went wrong.",
         whatsNew: "What's new",
+        downloadingAction: "Downloading...",
         installingAction: "Installing...",
+        downloadAndRestart: "Download",
         installAndRestart: "Install & restart",
+        downloadingVersionDescription: "Downloading {{version}}... {{percent}}%",
+        downloadingDescription: "Downloading update... {{percent}}%",
         installingDescription: "Installing and restarting...",
+        versionAvailable: "{{version}} is available to download.",
+        newVersionAvailable: "A new version is available to download.",
         versionReady: "{{version}} is ready to install.",
         newVersionReady: "A new version is ready to install.",
         restartWarning: "Upgrading the app will stop running agents and close terminal sessions.",
@@ -1811,12 +1856,6 @@ export const en = {
             "The fully featured native mobile app allows you to control any Paseo computer from your phone",
           appStore: "App Store",
           googlePlay: "Google Play",
-          connectTitle: "Choose how to connect",
-          connectDocs: "Docs",
-          openConnectDocs: "Open connectivity documentation",
-          recommended: "Recommended",
-          relay: { title: "Relay", hint: "End-to-end encrypted, scan a QR code" },
-          tailscale: { title: "Tailscale", hint: "Requires some setup" },
         },
       },
     },
@@ -1893,6 +1932,34 @@ export const en = {
       noModelAvailable: "No model is available for the selected provider",
       workspaceDirectoryNotFound: "Workspace directory not found",
       hostDisconnected: "Host is not connected",
+    },
+  },
+  devices: {
+    title: "Devices",
+    waysToConnect: "Ways to connect",
+    docs: "Docs",
+    docsAccessibility: "Open connectivity documentation",
+    relay: { title: "Relay", hint: "No setup, end-to-end encrypted, scan a QR code" },
+    tailscale: {
+      hint: "Direct over your tailnet, enter an address",
+      unavailable: "Tailscale is not running on this host",
+      install: "Get Tailscale",
+      refresh: "Refresh",
+      refreshing: "Refreshing...",
+      waiting: "Waiting for Tailscale to start on this host",
+      alwaysOn: "Always on, because this host already accepts Tailscale connections",
+      socket: "Off, because this host listens on a local socket",
+      launch: "Controlled by the command that starts this host",
+      update: "Update this host to use Tailscale",
+      updateDocs: "How to update",
+      address: "On a phone with Tailscale, add a host at this address",
+      statusError: "Could not check Tailscale",
+      turnOnError: "Could not turn on Tailscale",
+      turnOffError: "Could not turn off Tailscale",
+      confirmTitle: "Turn off Tailscale?",
+      confirmMessage:
+        "This device is connected through Tailscale and will lose its connection to the host.",
+      confirmAction: "Turn off",
     },
   },
   pairing: {
@@ -2361,7 +2428,7 @@ export const en = {
     title: "Settings",
     loading: "Loading settings...",
     groups: {
-      app: "App",
+      app: "This device",
       host: "Host",
     },
     hostPicker: {
@@ -2379,7 +2446,9 @@ export const en = {
     groupInfo: "About {{title}}",
     sections: {
       general: "General",
+      hosts: "Hosts",
       chat: "Chat",
+      chatAndPanes: "Chat & panes",
       appearance: "Appearance",
       sidebar: "Sidebar",
       editor: "Editor",
@@ -2392,6 +2461,16 @@ export const en = {
       permissions: "Permissions",
       diagnostics: "Diagnostics",
       about: "About",
+    },
+    clientHosts: {
+      title: "Saved hosts",
+      info: "Hosts this device connects to. Names, icons, badges, and routes here only affect this device.",
+      backToHosts: "Back to hosts",
+      routesTitle: "How this device connects",
+      routesInfo:
+        "Saved routes this device uses to reach this host. Paseo picks the fastest available route.",
+      addRoute: "Add route",
+      activeRoute: "Active",
     },
     layout: {
       openInSidePane: {
@@ -2447,6 +2526,48 @@ export const en = {
     },
     notifications: {
       title: "Notifications",
+      enabled: {
+        label: "Enable notifications",
+        description: "Receive notifications from agents, terminals, and plugins on this device",
+        pausedDescription: "All notifications, including plugins, are paused on this device",
+      },
+      events: {
+        title: "Events",
+        agentPermission: {
+          label: "Agent needs permission",
+          description: "Approvals, plans, and questions",
+        },
+        agentError: {
+          label: "Agent errored",
+          description: "When an agent stops with an error",
+        },
+        agentFinished: {
+          label: "Agent finished",
+          description: "When an agent completes a turn",
+        },
+        terminalNeedsInput: {
+          label: "Terminal needs input",
+          description: "When a terminal command is waiting for input",
+        },
+        terminalFinished: {
+          label: "Terminal finished",
+          description: "When a terminal command finishes",
+        },
+      },
+      plugins: {
+        title: "Plugins",
+        enabled: {
+          label: "Plugin notifications",
+          description: "Allow installed plugins to send notifications",
+        },
+        empty: "Installed plugins appear here so you can mute them individually",
+      },
+      legacyHostTitle: "Update host for push preferences",
+      legacyHostHint:
+        "Update connected hosts to sync custom push notification preferences from this device",
+      desktop: {
+        title: "System",
+      },
       permission: "Notification permission",
       refreshAccessibility: "Refresh notification permission",
       playSound: "Play sound",
@@ -2464,6 +2585,7 @@ export const en = {
       projects: "Projects",
       connections: "Connections",
       agents: "Agents",
+      tools: "Tools & prompts",
       agentProfiles: "Agent profiles",
       metadata: "Metadata",
       voice: "Voice",
@@ -2473,6 +2595,7 @@ export const en = {
       terminals: "Terminals",
       plugins: "Plugins",
       host: "Overview",
+      daemon: "Daemon",
     },
     plugins: {
       gallery: pluginGallery.en,
@@ -2743,9 +2866,28 @@ export const en = {
         stable: "Stable",
         beta: "Beta",
       },
+      autoUpdate: {
+        label: "Automatic updates",
+        options: {
+          automatic: "Auto",
+          notify: "Notify",
+          off: "Off",
+        },
+        descriptions: {
+          automatic: "Check and download updates in the background",
+          notify: "Check for updates, but only download when you choose",
+          off: "Never check automatically. Only check when you click Check",
+        },
+      },
       updates: {
         label: "App updates",
         readyToInstall: "Ready to install: {{version}}",
+        downloadTitle: "Download desktop update",
+        downloadMessage: "This downloads and installs the Paseo update on this computer",
+        downloadConfirm: "Download & install",
+        download: "Download",
+        downloadTo: "Download {{version}}",
+        downloading: "Downloading...",
         installTitle: "Install desktop update",
         installMessage: "This updates Paseo on this computer",
         installConfirm: "Install update",
@@ -3015,14 +3157,12 @@ export const en = {
         timeout: "Timeout",
       },
       pairDevices: {
-        title: "Pair devices",
         rowTitle: "Pair a device",
-        rowHint: "Scan a QR code or copy a link to connect your phone to this host",
       },
       skills: {
-        sectionTitle: "Orchestration skills",
-        title: "Orchestration skills",
-        description: "Teach your agents how to use Paseo tools",
+        sectionTitle: "Skills",
+        title: "Paseo skills",
+        description: "Install bundled help, plugin, and orchestration skills",
         docs: "Skills",
         openDocs: "Open skills documentation",
         unavailable: "Connect to this host to manage orchestration skills",
@@ -3059,6 +3199,10 @@ export const en = {
           update: "Update skill",
           delete: "Delete skill",
         },
+      },
+      tools: {
+        instructionsTitle: "Instructions",
+        toolsTitle: "Agent tools",
       },
       orchestration: {
         title: "Orchestration",
@@ -3126,6 +3270,8 @@ export const en = {
       },
       agentProfiles: {
         sectionTitle: "Agent profiles",
+        sectionDescription:
+          "Save agent settings that you can pick quickly and that agents can use to delegate work",
         unavailable: "Connect to this host to manage agent profiles",
         unsupported: "This host runs a daemon that does not support agent profiles yet",
         emptyState: "No profiles yet. Add one to start agents from a saved provider and model.",
@@ -3149,6 +3295,9 @@ export const en = {
         featuresLabel: "Features",
         featureCount: "{{count}} features",
         featureCountOne: "{{count}} feature",
+        systemPromptLabel: "System prompt",
+        systemPromptPlaceholder: "Focus on layout, accessibility, and design tokens.",
+        systemPromptHint: "Applies to new agents only",
         notesLabel: "When to use",
         notesPlaceholder: "Use for UI work — components, layout and design tokens.",
         notesHint: "Tells agents when to pick this profile",
@@ -3186,6 +3335,7 @@ export const en = {
         },
       },
       daemon: {
+        runtimeTitle: "Agent runtime",
         rename: {
           editLabel: "Edit label",
           title: "Rename host",

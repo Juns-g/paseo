@@ -161,6 +161,7 @@ export interface PaseoToolHostDependencies {
   workspaceScripts?: Pick<WorkspaceScriptsService, "list" | "launch" | "stop">;
   markWorkspaceArchiving?: ArchiveDependencies["markWorkspaceArchiving"];
   clearWorkspaceArchiving?: ArchiveDependencies["clearWorkspaceArchiving"];
+  lifecycle?: ArchiveDependencies["lifecycle"];
   createPaseoWorktree?: CreatePaseoWorktreeWorkflowFn;
   // Mints a fresh directory workspace for a cwd and returns its id.
   ensureWorkspaceForCreate?: (
@@ -886,6 +887,21 @@ function createToolCatalog(
     };
   };
 
+  const resolveCreateAgentConfig = (
+    selectedProvider: string,
+    rawSystemPrompt?: string,
+  ): Partial<AgentSessionConfig> | undefined => {
+    const inheritedConfig = resolveInheritedProviderConfig(selectedProvider);
+    const systemPrompt = rawSystemPrompt?.trim();
+    if (!inheritedConfig && !systemPrompt) {
+      return undefined;
+    }
+    return {
+      ...inheritedConfig,
+      ...(systemPrompt ? { systemPrompt } : {}),
+    };
+  };
+
   const resolveInheritedProviderConfig = (
     selectedProvider: string,
   ): Pick<AgentSessionConfig, "providerOptions"> | undefined => {
@@ -1125,6 +1141,10 @@ function createToolCatalog(
         .record(z.string(), z.unknown())
         .optional()
         .describe("Provider-specific feature values, for example { fast_mode: true } for Codex."),
+      systemPrompt: z
+        .string()
+        .optional()
+        .describe("Optional system prompt applied to the new agent."),
     })
     .strict();
   const UpdateAgentSettingsInputSchema = z
@@ -1223,7 +1243,7 @@ function createToolCatalog(
       .boolean()
       .optional()
       .describe(
-        "True creates a background agent: hidden from tabs, default lists, your subagent track and notifications. You still get its finish notification and can address it by id. Omit to inherit your own value (false without a caller); use it for helpers the user does not need to watch.",
+        "Hide the agent from the UI. Inherits your visibility when omitted. Omit unless the user asks for a specific value.",
       ),
   };
   const legacyCreateAgentPlacementFields = {
@@ -1434,7 +1454,7 @@ function createToolCatalog(
           .boolean()
           .optional()
           .describe(
-            "True hides the workspace from default lists and the sidebar while its contents remain durable and accessible; omit background to inherit your own visibility (true when you or your current workspace are background, false without a caller), and override it only when the user explicitly asks.",
+            "Hide the workspace from the UI. Inherits your visibility when omitted. Omit unless the user asks for a specific value.",
           ),
         mode: z
           .enum(["branch-off", "checkout-branch", "checkout-pr"])
@@ -1651,7 +1671,10 @@ function createToolCatalog(
         notifyOnFinish = resolvedArgs.parsedArgs.notifyOnFinish ?? false;
       }
       const selectedProvider = resolveRequiredProviderModel(parsedArgs.provider).provider;
-      const inheritedConfig = resolveInheritedProviderConfig(selectedProvider);
+      const createConfig = resolveCreateAgentConfig(
+        selectedProvider,
+        parsedArgs.settings?.systemPrompt,
+      );
       const { snapshot, initialPromptStarted } = await createAgentCommand(
         {
           agentManager,
@@ -1672,7 +1695,7 @@ function createToolCatalog(
           provider: parsedArgs.provider,
           title: parsedArgs.title,
           initialPrompt: parsedArgs.initialPrompt,
-          config: inheritedConfig,
+          config: createConfig,
           cwd: resolvedArgs.cwd,
           workspaceId: resolvedArgs.workspaceId,
           thinking: parsedArgs.settings?.thinkingOptionId,
@@ -2565,6 +2588,7 @@ function createToolCatalog(
       const workspaceId = await resolveTerminalWorkspaceId(resolvedCwd);
 
       const terminal = await terminalManager.createTerminal({
+        origin: { source: "agent" },
         cwd: resolvedCwd,
         workspaceId,
         ...(name?.trim() ? { name: name.trim() } : {}),
@@ -3204,8 +3228,9 @@ function createToolCatalog(
       description:
         "List agent profiles: named provider/model/mode bundles a human configured for specific " +
         "kinds of work. Read each profile's `notes` to pick the one that fits the task you're " +
-        "delegating, then copy its `provider`, `model`, `modeId`, `thinkingOptionId`, and " +
-        "`options` into create_agent as `settings.features` (there is no `profile` parameter). " +
+        "delegating, then copy its `provider`, `model`, `modeId`, `thinkingOptionId`, " +
+        "`systemPrompt` (as `settings.systemPrompt`), and `options` (as `settings.features`) " +
+        "into create_agent (there is no `profile` parameter). " +
         "Returns an empty list if none are configured.",
       inputSchema: {},
       outputSchema: {
@@ -3463,6 +3488,7 @@ function archiveWorktreeDependencies(
     throw new Error("Checkout trust lookup is required to archive worktrees");
   }
   return {
+    lifecycle: options.lifecycle ?? null,
     paseoHome: options.paseoHome,
     paseoWorktreesBaseRoot: options.worktreesRoot,
     worktreeManagers: options.worktreeManagers,
